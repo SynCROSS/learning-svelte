@@ -351,7 +351,7 @@ var app = (function () {
     			t2 = text(" x ");
     			t3 = text(t3_value);
     			attr_dev(div, "class", "svelte-1kuj9kb");
-    			add_location(div, file, 9, 0, 137);
+    			add_location(div, file, 9, 0, 149);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -364,7 +364,7 @@ var app = (function () {
     			append_dev(div, t3);
 
     			if (!mounted) {
-    				dispose = listen_dev(div, "mousemove", /*handleMousemove*/ ctx[1], false, false, false);
+    				dispose = listen_dev(div, "mousemove", /*mousemove_handler*/ ctx[1], false, false, false);
     				mounted = true;
     			}
     		},
@@ -396,19 +396,14 @@ var app = (function () {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
     	let m = { x: 0, y: 0 };
-
-    	function handleMousemove(event) {
-    		$$invalidate(0, m.x = event.clientX, m);
-    		$$invalidate(0, m.y = event.clientY, m);
-    	}
-
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ m, handleMousemove });
+    	const mousemove_handler = e => $$invalidate(0, m = { x: e.clientX, y: e.clientY });
+    	$$self.$capture_state = () => ({ m });
 
     	$$self.$inject_state = $$props => {
     		if ("m" in $$props) $$invalidate(0, m = $$props.m);
@@ -418,7 +413,7 @@ var app = (function () {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [m, handleMousemove];
+    	return [m, mousemove_handler];
     }
 
     class App extends SvelteComponentDev {
