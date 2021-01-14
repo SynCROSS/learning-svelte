@@ -36,6 +36,12 @@ var app = (function () {
     function element(name) {
         return document.createElement(name);
     }
+    function attr(node, attribute, value) {
+        if (value == null)
+            node.removeAttribute(attribute);
+        else if (node.getAttribute(attribute) !== value)
+            node.setAttribute(attribute, value);
+    }
     function children(element) {
         return Array.from(element.childNodes);
     }
@@ -253,6 +259,13 @@ var app = (function () {
         dispatch_dev('SvelteDOMRemove', { node });
         detach(node);
     }
+    function attr_dev(node, attribute, value) {
+        attr(node, attribute, value);
+        if (value == null)
+            dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
+        else
+            dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
+    }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
             if (!~keys.indexOf(slot_key)) {
@@ -285,25 +298,27 @@ var app = (function () {
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let h1;
+    	let img;
+    	let img_src_value;
 
     	const block = {
     		c: function create() {
-    			h1 = element("h1");
-    			h1.textContent = `Hello ${/*world*/ ctx[0]}!`;
-    			add_location(h1, file, 4, 0, 47);
+    			img = element("img");
+    			if (img.src !== (img_src_value = /*src*/ ctx[0])) attr_dev(img, "src", img_src_value);
+    			attr_dev(img, "alt", "Bro U just posted cringe.");
+    			add_location(img, file, 5, 0, 110);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, h1, anchor);
+    			insert_dev(target, img, anchor);
     		},
     		p: noop,
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(h1);
+    			if (detaching) detach_dev(img);
     		}
     	};
 
@@ -321,24 +336,24 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let world = "THE World";
+    	let src = "https://static.wikia.nocookie.net/d3098096-72da-4e0b-b34b-404b9328f028";
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ world });
+    	$$self.$capture_state = () => ({ src });
 
     	$$self.$inject_state = $$props => {
-    		if ("world" in $$props) $$invalidate(0, world = $$props.world);
+    		if ("src" in $$props) $$invalidate(0, src = $$props.src);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [world];
+    	return [src];
     }
 
     class App extends SvelteComponentDev {

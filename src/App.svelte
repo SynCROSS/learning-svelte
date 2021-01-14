@@ -1,5 +1,6 @@
 <script>
-  let world = 'THE World';
+  let src =
+    'https://static.wikia.nocookie.net/d3098096-72da-4e0b-b34b-404b9328f028';
 </script>
 
-<h1>Hello {world}!</h1>
+<img {src} alt="Bro U just posted cringe." />
