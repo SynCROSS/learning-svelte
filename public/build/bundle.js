@@ -27,6 +27,10 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
+
+    function append(target, node) {
+        target.appendChild(node);
+    }
     function insert(target, node, anchor) {
         target.insertBefore(node, anchor || null);
     }
@@ -35,6 +39,16 @@ var app = (function () {
     }
     function element(name) {
         return document.createElement(name);
+    }
+    function text(data) {
+        return document.createTextNode(data);
+    }
+    function space() {
+        return text(' ');
+    }
+    function listen(node, event, handler, options) {
+        node.addEventListener(event, handler, options);
+        return () => node.removeEventListener(event, handler, options);
     }
     function children(element) {
         return Array.from(element.childNodes);
@@ -245,6 +259,10 @@ var app = (function () {
     function dispatch_dev(type, detail) {
         document.dispatchEvent(custom_event(type, Object.assign({ version: '3.31.2' }, detail)));
     }
+    function append_dev(target, node) {
+        dispatch_dev('SvelteDOMInsert', { target, node });
+        append(target, node);
+    }
     function insert_dev(target, node, anchor) {
         dispatch_dev('SvelteDOMInsert', { target, node, anchor });
         insert(target, node, anchor);
@@ -252,6 +270,26 @@ var app = (function () {
     function detach_dev(node) {
         dispatch_dev('SvelteDOMRemove', { node });
         detach(node);
+    }
+    function listen_dev(node, event, handler, options, has_prevent_default, has_stop_propagation) {
+        const modifiers = options === true ? ['capture'] : options ? Array.from(Object.keys(options)) : [];
+        if (has_prevent_default)
+            modifiers.push('preventDefault');
+        if (has_stop_propagation)
+            modifiers.push('stopPropagation');
+        dispatch_dev('SvelteDOMAddEventListener', { node, event, handler, modifiers });
+        const dispose = listen(node, event, handler, options);
+        return () => {
+            dispatch_dev('SvelteDOMRemoveEventListener', { node, event, handler, modifiers });
+            dispose();
+        };
+    }
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -285,25 +323,49 @@ var app = (function () {
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let p;
+    	let button;
+    	let t0;
+    	let t1;
+    	let t2;
+    	let t3_value = (/*count*/ ctx[0] === 1 ? "time" : "times") + "";
+    	let t3;
+    	let mounted;
+    	let dispose;
 
     	const block = {
     		c: function create() {
-    			p = element("p");
-    			add_location(p, file, 4, 0, 89);
+    			button = element("button");
+    			t0 = text("Clicked ");
+    			t1 = text(/*count*/ ctx[0]);
+    			t2 = space();
+    			t3 = text(t3_value);
+    			add_location(button, file, 8, 0, 86);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, p, anchor);
-    			p.innerHTML = /*string*/ ctx[0];
+    			insert_dev(target, button, anchor);
+    			append_dev(button, t0);
+    			append_dev(button, t1);
+    			append_dev(button, t2);
+    			append_dev(button, t3);
+
+    			if (!mounted) {
+    				dispose = listen_dev(button, "click", /*handleClick*/ ctx[1], false, false, false);
+    				mounted = true;
+    			}
     		},
-    		p: noop,
+    		p: function update(ctx, [dirty]) {
+    			if (dirty & /*count*/ 1) set_data_dev(t1, /*count*/ ctx[0]);
+    			if (dirty & /*count*/ 1 && t3_value !== (t3_value = (/*count*/ ctx[0] === 1 ? "time" : "times") + "")) set_data_dev(t3, t3_value);
+    		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(p);
+    			if (detaching) detach_dev(button);
+    			mounted = false;
+    			dispose();
     		}
     	};
 
@@ -321,24 +383,29 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let string = `this string contains some <strong>HTML!!!</strong>`;
+    	let count = 0;
+
+    	const handleClick = () => {
+    		$$invalidate(0, count++, count);
+    	};
+
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ string });
+    	$$self.$capture_state = () => ({ count, handleClick });
 
     	$$self.$inject_state = $$props => {
-    		if ("string" in $$props) $$invalidate(0, string = $$props.string);
+    		if ("count" in $$props) $$invalidate(0, count = $$props.count);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [string];
+    	return [count, handleClick];
     }
 
     class App extends SvelteComponentDev {
