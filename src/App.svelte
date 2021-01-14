@@ -1,4 +1,9 @@
-<p>King CRIMSON</p>
+<script>
+  import Nested from './Nested.svelte';
+</script>
+
+<p>This is a King CRIMSON</p>
+<Nested />
 
 <style>
   p {
