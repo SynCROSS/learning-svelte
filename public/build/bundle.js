@@ -329,6 +329,11 @@ var app = (function () {
     	let t2;
     	let t3_value = (/*count*/ ctx[0] === 1 ? "time" : "times") + "";
     	let t3;
+    	let t4;
+    	let p;
+    	let t5;
+    	let t6;
+    	let t7;
     	let mounted;
     	let dispose;
 
@@ -339,7 +344,13 @@ var app = (function () {
     			t1 = text(/*count*/ ctx[0]);
     			t2 = space();
     			t3 = text(t3_value);
-    			add_location(button, file, 8, 0, 86);
+    			t4 = space();
+    			p = element("p");
+    			t5 = text(/*count*/ ctx[0]);
+    			t6 = text(" doubled is ");
+    			t7 = text(/*doubled*/ ctx[1]);
+    			add_location(button, file, 10, 0, 112);
+    			add_location(p, file, 15, 0, 208);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -350,20 +361,29 @@ var app = (function () {
     			append_dev(button, t1);
     			append_dev(button, t2);
     			append_dev(button, t3);
+    			insert_dev(target, t4, anchor);
+    			insert_dev(target, p, anchor);
+    			append_dev(p, t5);
+    			append_dev(p, t6);
+    			append_dev(p, t7);
 
     			if (!mounted) {
-    				dispose = listen_dev(button, "click", /*handleClick*/ ctx[1], false, false, false);
+    				dispose = listen_dev(button, "click", /*handleClick*/ ctx[2], false, false, false);
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
     			if (dirty & /*count*/ 1) set_data_dev(t1, /*count*/ ctx[0]);
     			if (dirty & /*count*/ 1 && t3_value !== (t3_value = (/*count*/ ctx[0] === 1 ? "time" : "times") + "")) set_data_dev(t3, t3_value);
+    			if (dirty & /*count*/ 1) set_data_dev(t5, /*count*/ ctx[0]);
+    			if (dirty & /*doubled*/ 2) set_data_dev(t7, /*doubled*/ ctx[1]);
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(button);
+    			if (detaching) detach_dev(t4);
+    			if (detaching) detach_dev(p);
     			mounted = false;
     			dispose();
     		}
@@ -381,13 +401,14 @@ var app = (function () {
     }
 
     function instance($$self, $$props, $$invalidate) {
+    	let doubled;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
     	let count = 0;
 
-    	const handleClick = () => {
-    		$$invalidate(0, count++, count);
-    	};
+    	function handleClick() {
+    		$$invalidate(0, count += 1);
+    	}
 
     	const writable_props = [];
 
@@ -395,17 +416,24 @@ var app = (function () {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ count, handleClick });
+    	$$self.$capture_state = () => ({ count, handleClick, doubled });
 
     	$$self.$inject_state = $$props => {
     		if ("count" in $$props) $$invalidate(0, count = $$props.count);
+    		if ("doubled" in $$props) $$invalidate(1, doubled = $$props.doubled);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [count, handleClick];
+    	$$self.$$.update = () => {
+    		if ($$self.$$.dirty & /*count*/ 1) {
+    			 $$invalidate(1, doubled = count * 2);
+    		}
+    	};
+
+    	return [count, doubled, handleClick];
     }
 
     class App extends SvelteComponentDev {
