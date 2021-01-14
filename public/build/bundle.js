@@ -39,12 +39,8 @@ var app = (function () {
     function text(data) {
         return document.createTextNode(data);
     }
-    function space() {
-        return text(' ');
-    }
-    function listen(node, event, handler, options) {
-        node.addEventListener(event, handler, options);
-        return () => node.removeEventListener(event, handler, options);
+    function empty() {
+        return text('');
     }
     function children(element) {
         return Array.from(element.childNodes);
@@ -263,26 +259,6 @@ var app = (function () {
         dispatch_dev('SvelteDOMRemove', { node });
         detach(node);
     }
-    function listen_dev(node, event, handler, options, has_prevent_default, has_stop_propagation) {
-        const modifiers = options === true ? ['capture'] : options ? Array.from(Object.keys(options)) : [];
-        if (has_prevent_default)
-            modifiers.push('preventDefault');
-        if (has_stop_propagation)
-            modifiers.push('stopPropagation');
-        dispatch_dev('SvelteDOMAddEventListener', { node, event, handler, modifiers });
-        const dispose = listen(node, event, handler, options);
-        return () => {
-            dispatch_dev('SvelteDOMRemoveEventListener', { node, event, handler, modifiers });
-            dispose();
-        };
-    }
-    function set_data_dev(text, data) {
-        data = '' + data;
-        if (text.wholeText === data)
-            return;
-        dispatch_dev('SvelteDOMSetData', { node: text, data });
-        text.data = data;
-    }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
             if (!~keys.indexOf(slot_key)) {
@@ -314,31 +290,22 @@ var app = (function () {
 
     const file = "src\\App.svelte";
 
-    // (11:0) {:else}
+    // (9:0) {:else}
     function create_else_block(ctx) {
-    	let button;
-    	let mounted;
-    	let dispose;
+    	let p;
 
     	const block = {
     		c: function create() {
-    			button = element("button");
-    			button.textContent = "Log in";
-    			add_location(button, file, 11, 2, 194);
+    			p = element("p");
+    			p.textContent = `${/*x*/ ctx[0]} is between 5 and 10`;
+    			add_location(p, file, 9, 2, 133);
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, button, anchor);
-
-    			if (!mounted) {
-    				dispose = listen_dev(button, "click", /*toggle*/ ctx[1], false, false, false);
-    				mounted = true;
-    			}
+    			insert_dev(target, p, anchor);
     		},
     		p: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(button);
-    			mounted = false;
-    			dispose();
+    			if (detaching) detach_dev(p);
     		}
     	};
 
@@ -346,38 +313,59 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(11:0) {:else}",
+    		source: "(9:0) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (9:0) {#if user.loggedIn}
-    function create_if_block(ctx) {
-    	let button;
-    	let mounted;
-    	let dispose;
+    // (7:16) 
+    function create_if_block_1(ctx) {
+    	let p;
 
     	const block = {
     		c: function create() {
-    			button = element("button");
-    			button.textContent = "Log out";
-    			add_location(button, file, 9, 2, 139);
+    			p = element("p");
+    			p.textContent = `${/*x*/ ctx[0]} is less than 5`;
+    			add_location(p, file, 7, 2, 97);
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, button, anchor);
-
-    			if (!mounted) {
-    				dispose = listen_dev(button, "click", /*toggle*/ ctx[1], false, false, false);
-    				mounted = true;
-    			}
+    			insert_dev(target, p, anchor);
     		},
     		p: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(button);
-    			mounted = false;
-    			dispose();
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block_1.name,
+    		type: "if",
+    		source: "(7:16) ",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (5:0) {#if x > 10}
+    function create_if_block(ctx) {
+    	let p;
+
+    	const block = {
+    		c: function create() {
+    			p = element("p");
+    			p.textContent = `${/*x*/ ctx[0]} is greater than 10`;
+    			add_location(p, file, 5, 2, 48);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    		},
+    		p: noop,
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
     		}
     	};
 
@@ -385,7 +373,7 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(9:0) {#if user.loggedIn}",
+    		source: "(5:0) {#if x > 10}",
     		ctx
     	});
 
@@ -393,14 +381,11 @@ var app = (function () {
     }
 
     function create_fragment(ctx) {
-    	let t0;
-    	let br;
-    	let t1;
-    	let t2_value = /*user*/ ctx[0].loggedIn + "";
-    	let t2;
+    	let if_block_anchor;
 
     	function select_block_type(ctx, dirty) {
-    		if (/*user*/ ctx[0].loggedIn) return create_if_block;
+    		if (/*x*/ ctx[0] > 10) return create_if_block;
+    		if (5 > /*x*/ ctx[0]) return create_if_block_1;
     		return create_else_block;
     	}
 
@@ -410,45 +395,23 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			if_block.c();
-    			t0 = space();
-    			br = element("br");
-    			t1 = text("\n\nIs User Logged In? ");
-    			t2 = text(t2_value);
-    			add_location(br, file, 14, 0, 245);
+    			if_block_anchor = empty();
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
     			if_block.m(target, anchor);
-    			insert_dev(target, t0, anchor);
-    			insert_dev(target, br, anchor);
-    			insert_dev(target, t1, anchor);
-    			insert_dev(target, t2, anchor);
+    			insert_dev(target, if_block_anchor, anchor);
     		},
     		p: function update(ctx, [dirty]) {
-    			if (current_block_type === (current_block_type = select_block_type(ctx)) && if_block) {
-    				if_block.p(ctx, dirty);
-    			} else {
-    				if_block.d(1);
-    				if_block = current_block_type(ctx);
-
-    				if (if_block) {
-    					if_block.c();
-    					if_block.m(t0.parentNode, t0);
-    				}
-    			}
-
-    			if (dirty & /*user*/ 1 && t2_value !== (t2_value = /*user*/ ctx[0].loggedIn + "")) set_data_dev(t2, t2_value);
+    			if_block.p(ctx, dirty);
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
     			if_block.d(detaching);
-    			if (detaching) detach_dev(t0);
-    			if (detaching) detach_dev(br);
-    			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(t2);
+    			if (detaching) detach_dev(if_block_anchor);
     		}
     	};
 
@@ -466,29 +429,24 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let user = { loggedIn: false };
-
-    	function toggle() {
-    		$$invalidate(0, user.loggedIn = !user.loggedIn, user);
-    	}
-
+    	let x = 7;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ user, toggle });
+    	$$self.$capture_state = () => ({ x });
 
     	$$self.$inject_state = $$props => {
-    		if ("user" in $$props) $$invalidate(0, user = $$props.user);
+    		if ("x" in $$props) $$invalidate(0, x = $$props.x);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [user, toggle];
+    	return [x];
     }
 
     class App extends SvelteComponentDev {
