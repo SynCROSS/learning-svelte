@@ -298,27 +298,26 @@ var app = (function () {
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let img;
-    	let img_src_value;
+    	let p;
 
     	const block = {
     		c: function create() {
-    			img = element("img");
-    			if (img.src !== (img_src_value = /*src*/ ctx[0])) attr_dev(img, "src", img_src_value);
-    			attr_dev(img, "alt", "Bro U just posted cringe.");
-    			add_location(img, file, 5, 0, 110);
+    			p = element("p");
+    			p.textContent = "King CRIMSON";
+    			attr_dev(p, "class", "svelte-xh61r4");
+    			add_location(p, file, 0, 0, 0);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, img, anchor);
+    			insert_dev(target, p, anchor);
     		},
     		p: noop,
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(img);
+    			if (detaching) detach_dev(p);
     		}
     	};
 
@@ -333,27 +332,16 @@ var app = (function () {
     	return block;
     }
 
-    function instance($$self, $$props, $$invalidate) {
+    function instance($$self, $$props) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let src = "https://static.wikia.nocookie.net/d3098096-72da-4e0b-b34b-404b9328f028";
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ src });
-
-    	$$self.$inject_state = $$props => {
-    		if ("src" in $$props) $$invalidate(0, src = $$props.src);
-    	};
-
-    	if ($$props && "$$inject" in $$props) {
-    		$$self.$inject_state($$props.$$inject);
-    	}
-
-    	return [src];
+    	return [];
     }
 
     class App extends SvelteComponentDev {

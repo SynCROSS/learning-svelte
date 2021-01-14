@@ -1,6 +1,9 @@
-<script>
-  let src =
-    'https://static.wikia.nocookie.net/d3098096-72da-4e0b-b34b-404b9328f028';
-</script>
+<p>King CRIMSON</p>
 
-<img {src} alt="Bro U just posted cringe." />
+<style>
+  p {
+    color: #dc143c;
+    font-family: 'Comic Sans MS', cursive;
+    font-size: 2em;
+  }
+</style>
