@@ -27,10 +27,6 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
-
-    function append(target, node) {
-        target.appendChild(node);
-    }
     function insert(target, node, anchor) {
         target.insertBefore(node, anchor || null);
     }
@@ -40,18 +36,9 @@ var app = (function () {
     function element(name) {
         return document.createElement(name);
     }
-    function text(data) {
-        return document.createTextNode(data);
-    }
     function listen(node, event, handler, options) {
         node.addEventListener(event, handler, options);
         return () => node.removeEventListener(event, handler, options);
-    }
-    function attr(node, attribute, value) {
-        if (value == null)
-            node.removeAttribute(attribute);
-        else if (node.getAttribute(attribute) !== value)
-            node.setAttribute(attribute, value);
     }
     function children(element) {
         return Array.from(element.childNodes);
@@ -262,10 +249,6 @@ var app = (function () {
     function dispatch_dev(type, detail) {
         document.dispatchEvent(custom_event(type, Object.assign({ version: '3.31.2' }, detail)));
     }
-    function append_dev(target, node) {
-        dispatch_dev('SvelteDOMInsert', { target, node });
-        append(target, node);
-    }
     function insert_dev(target, node, anchor) {
         dispatch_dev('SvelteDOMInsert', { target, node, anchor });
         insert(target, node, anchor);
@@ -286,20 +269,6 @@ var app = (function () {
             dispatch_dev('SvelteDOMRemoveEventListener', { node, event, handler, modifiers });
             dispose();
         };
-    }
-    function attr_dev(node, attribute, value) {
-        attr(node, attribute, value);
-        if (value == null)
-            dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
-        else
-            dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
-    }
-    function set_data_dev(text, data) {
-        data = '' + data;
-        if (text.wholeText === data)
-            return;
-        dispatch_dev('SvelteDOMSetData', { node: text, data });
-        text.data = data;
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -333,49 +302,32 @@ var app = (function () {
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let div;
-    	let t0;
-    	let t1_value = /*m*/ ctx[0].x + "";
-    	let t1;
-    	let t2;
-    	let t3_value = /*m*/ ctx[0].y + "";
-    	let t3;
+    	let button;
     	let mounted;
     	let dispose;
 
     	const block = {
     		c: function create() {
-    			div = element("div");
-    			t0 = text("The mouse position is ");
-    			t1 = text(t1_value);
-    			t2 = text(" x ");
-    			t3 = text(t3_value);
-    			attr_dev(div, "class", "svelte-1kuj9kb");
-    			add_location(div, file, 9, 0, 149);
+    			button = element("button");
+    			button.textContent = "Don't touch this code and Click me more than Twice if you can";
+    			add_location(button, file, 18, 0, 290);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, div, anchor);
-    			append_dev(div, t0);
-    			append_dev(div, t1);
-    			append_dev(div, t2);
-    			append_dev(div, t3);
+    			insert_dev(target, button, anchor);
 
     			if (!mounted) {
-    				dispose = listen_dev(div, "mousemove", /*mousemove_handler*/ ctx[1], false, false, false);
+    				dispose = listen_dev(button, "click", /*handleClick*/ ctx[0], { once: true }, false, false);
     				mounted = true;
     			}
     		},
-    		p: function update(ctx, [dirty]) {
-    			if (dirty & /*m*/ 1 && t1_value !== (t1_value = /*m*/ ctx[0].x + "")) set_data_dev(t1, t1_value);
-    			if (dirty & /*m*/ 1 && t3_value !== (t3_value = /*m*/ ctx[0].y + "")) set_data_dev(t3, t3_value);
-    		},
+    		p: noop,
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(div);
+    			if (detaching) detach_dev(button);
     			mounted = false;
     			dispose();
     		}
@@ -395,25 +347,41 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let m = { x: 0, y: 0 };
+    	let count = 0;
+    	let clicked = "";
+
+    	function handleClick() {
+    		++count;
+
+    		if (count === 1) {
+    			clicked = "once";
+    		} else if (count === 2) {
+    			clicked = "twice";
+    		} else {
+    			clicked = count + "times";
+    		}
+
+    		alert("clicked " + clicked);
+    	}
+
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	const mousemove_handler = e => $$invalidate(0, m = { x: e.clientX, y: e.clientY });
-    	$$self.$capture_state = () => ({ m });
+    	$$self.$capture_state = () => ({ count, clicked, handleClick });
 
     	$$self.$inject_state = $$props => {
-    		if ("m" in $$props) $$invalidate(0, m = $$props.m);
+    		if ("count" in $$props) count = $$props.count;
+    		if ("clicked" in $$props) clicked = $$props.clicked;
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [m, mousemove_handler];
+    	return [handleClick];
     }
 
     class App extends SvelteComponentDev {
