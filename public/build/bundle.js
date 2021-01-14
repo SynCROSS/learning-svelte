@@ -27,11 +27,21 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
+
+    function append(target, node) {
+        target.appendChild(node);
+    }
     function insert(target, node, anchor) {
         target.insertBefore(node, anchor || null);
     }
     function detach(node) {
         node.parentNode.removeChild(node);
+    }
+    function destroy_each(iterations, detaching) {
+        for (let i = 0; i < iterations.length; i += 1) {
+            if (iterations[i])
+                iterations[i].d(detaching);
+        }
     }
     function element(name) {
         return document.createElement(name);
@@ -39,8 +49,14 @@ var app = (function () {
     function text(data) {
         return document.createTextNode(data);
     }
-    function empty() {
-        return text('');
+    function space() {
+        return text(' ');
+    }
+    function attr(node, attribute, value) {
+        if (value == null)
+            node.removeAttribute(attribute);
+        else if (node.getAttribute(attribute) !== value)
+            node.setAttribute(attribute, value);
     }
     function children(element) {
         return Array.from(element.childNodes);
@@ -251,6 +267,10 @@ var app = (function () {
     function dispatch_dev(type, detail) {
         document.dispatchEvent(custom_event(type, Object.assign({ version: '3.31.2' }, detail)));
     }
+    function append_dev(target, node) {
+        dispatch_dev('SvelteDOMInsert', { target, node });
+        append(target, node);
+    }
     function insert_dev(target, node, anchor) {
         dispatch_dev('SvelteDOMInsert', { target, node, anchor });
         insert(target, node, anchor);
@@ -258,6 +278,22 @@ var app = (function () {
     function detach_dev(node) {
         dispatch_dev('SvelteDOMRemove', { node });
         detach(node);
+    }
+    function attr_dev(node, attribute, value) {
+        attr(node, attribute, value);
+        if (value == null)
+            dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
+        else
+            dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
+    }
+    function validate_each_argument(arg) {
+        if (typeof arg !== 'string' && !(arg && typeof arg === 'object' && 'length' in arg)) {
+            let msg = '{#each} only iterates over array-like objects.';
+            if (typeof Symbol === 'function' && arg && Symbol.iterator in arg) {
+                msg += ' You can use a spread to convert this iterable into an array.';
+            }
+            throw new Error(msg);
+        }
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -290,90 +326,57 @@ var app = (function () {
 
     const file = "src\\App.svelte";
 
-    // (9:0) {:else}
-    function create_else_block(ctx) {
-    	let p;
-
-    	const block = {
-    		c: function create() {
-    			p = element("p");
-    			p.textContent = `${/*x*/ ctx[0]} is between 5 and 10`;
-    			add_location(p, file, 9, 2, 133);
-    		},
-    		m: function mount(target, anchor) {
-    			insert_dev(target, p, anchor);
-    		},
-    		p: noop,
-    		d: function destroy(detaching) {
-    			if (detaching) detach_dev(p);
-    		}
-    	};
-
-    	dispatch_dev("SvelteRegisterBlock", {
-    		block,
-    		id: create_else_block.name,
-    		type: "else",
-    		source: "(9:0) {:else}",
-    		ctx
-    	});
-
-    	return block;
+    function get_each_context(ctx, list, i) {
+    	const child_ctx = ctx.slice();
+    	child_ctx[1] = list[i];
+    	child_ctx[3] = i;
+    	return child_ctx;
     }
 
-    // (7:16) 
-    function create_if_block_1(ctx) {
-    	let p;
+    // (11:2) {#each cats as cat, i}
+    function create_each_block(ctx) {
+    	let li;
+    	let t0_value = /*i*/ ctx[3] + 1 + "";
+    	let t0;
+    	let t1;
+    	let a;
+    	let t2_value = /*cat*/ ctx[1].name + "";
+    	let t2;
+    	let t3;
 
     	const block = {
     		c: function create() {
-    			p = element("p");
-    			p.textContent = `${/*x*/ ctx[0]} is less than 5`;
-    			add_location(p, file, 7, 2, 97);
+    			li = element("li");
+    			t0 = text(t0_value);
+    			t1 = text(":\n      ");
+    			a = element("a");
+    			t2 = text(t2_value);
+    			t3 = space();
+    			attr_dev(a, "target", "_blank");
+    			attr_dev(a, "href", "https://www.youtube.com/watch?v=" + /*cat*/ ctx[1].id);
+    			add_location(a, file, 13, 6, 288);
+    			attr_dev(li, "class", "svelte-1hvby1l");
+    			add_location(li, file, 11, 4, 262);
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, p, anchor);
+    			insert_dev(target, li, anchor);
+    			append_dev(li, t0);
+    			append_dev(li, t1);
+    			append_dev(li, a);
+    			append_dev(a, t2);
+    			append_dev(li, t3);
     		},
     		p: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(p);
+    			if (detaching) detach_dev(li);
     		}
     	};
 
     	dispatch_dev("SvelteRegisterBlock", {
     		block,
-    		id: create_if_block_1.name,
-    		type: "if",
-    		source: "(7:16) ",
-    		ctx
-    	});
-
-    	return block;
-    }
-
-    // (5:0) {#if x > 10}
-    function create_if_block(ctx) {
-    	let p;
-
-    	const block = {
-    		c: function create() {
-    			p = element("p");
-    			p.textContent = `${/*x*/ ctx[0]} is greater than 10`;
-    			add_location(p, file, 5, 2, 48);
-    		},
-    		m: function mount(target, anchor) {
-    			insert_dev(target, p, anchor);
-    		},
-    		p: noop,
-    		d: function destroy(detaching) {
-    			if (detaching) detach_dev(p);
-    		}
-    	};
-
-    	dispatch_dev("SvelteRegisterBlock", {
-    		block,
-    		id: create_if_block.name,
-    		type: "if",
-    		source: "(5:0) {#if x > 10}",
+    		id: create_each_block.name,
+    		type: "each",
+    		source: "(11:2) {#each cats as cat, i}",
     		ctx
     	});
 
@@ -381,37 +384,75 @@ var app = (function () {
     }
 
     function create_fragment(ctx) {
-    	let if_block_anchor;
+    	let h1;
+    	let t1;
+    	let ul;
+    	let each_value = /*cats*/ ctx[0];
+    	validate_each_argument(each_value);
+    	let each_blocks = [];
 
-    	function select_block_type(ctx, dirty) {
-    		if (/*x*/ ctx[0] > 10) return create_if_block;
-    		if (5 > /*x*/ ctx[0]) return create_if_block_1;
-    		return create_else_block;
+    	for (let i = 0; i < each_value.length; i += 1) {
+    		each_blocks[i] = create_each_block(get_each_context(ctx, each_value, i));
     	}
-
-    	let current_block_type = select_block_type(ctx);
-    	let if_block = current_block_type(ctx);
 
     	const block = {
     		c: function create() {
-    			if_block.c();
-    			if_block_anchor = empty();
+    			h1 = element("h1");
+    			h1.textContent = "The Famous Cats of YouTube";
+    			t1 = space();
+    			ul = element("ul");
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].c();
+    			}
+
+    			add_location(h1, file, 8, 0, 192);
+    			add_location(ul, file, 9, 0, 228);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			if_block.m(target, anchor);
-    			insert_dev(target, if_block_anchor, anchor);
+    			insert_dev(target, h1, anchor);
+    			insert_dev(target, t1, anchor);
+    			insert_dev(target, ul, anchor);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].m(ul, null);
+    			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if_block.p(ctx, dirty);
+    			if (dirty & /*cats*/ 1) {
+    				each_value = /*cats*/ ctx[0];
+    				validate_each_argument(each_value);
+    				let i;
+
+    				for (i = 0; i < each_value.length; i += 1) {
+    					const child_ctx = get_each_context(ctx, each_value, i);
+
+    					if (each_blocks[i]) {
+    						each_blocks[i].p(child_ctx, dirty);
+    					} else {
+    						each_blocks[i] = create_each_block(child_ctx);
+    						each_blocks[i].c();
+    						each_blocks[i].m(ul, null);
+    					}
+    				}
+
+    				for (; i < each_blocks.length; i += 1) {
+    					each_blocks[i].d(1);
+    				}
+
+    				each_blocks.length = each_value.length;
+    			}
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if_block.d(detaching);
-    			if (detaching) detach_dev(if_block_anchor);
+    			if (detaching) detach_dev(h1);
+    			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(ul);
+    			destroy_each(each_blocks, detaching);
     		}
     	};
 
@@ -429,24 +470,33 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let x = 7;
+
+    	let cats = [
+    		{ id: "J---aiyznGQ", name: "Keyboard Cat" },
+    		{ id: "z_AbfPXTKms", name: "Maru" },
+    		{
+    			id: "OUtn3pvWmpg",
+    			name: "Henri The Existential Cat"
+    		}
+    	];
+
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({ x });
+    	$$self.$capture_state = () => ({ cats });
 
     	$$self.$inject_state = $$props => {
-    		if ("x" in $$props) $$invalidate(0, x = $$props.x);
+    		if ("cats" in $$props) $$invalidate(0, cats = $$props.cats);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [x];
+    	return [cats];
     }
 
     class App extends SvelteComponentDev {
