@@ -1,51 +1,15 @@
 <script>
-  let scoops = 1;
-  let flavours = [];
-  const menu = ['Cookies and Storages', 'Linux Mint', 'Raspberry Pi'];
-
-  function join(flavours) {
-    if (flavours.length === 1) return flavours[0];
-    return `${flavours.slice(0, -1).join(', ')} and ${
-      flavours[flavours.length - 1]
-    }`;
-  }
+  let html = '<p>Write some text!</p>';
 </script>
 
-<h2>Size</h2>
+<div contenteditable="true" bind:innerHTML={html} />
 
-<label>
-  <input type="radio" bind:group={scoops} value={1} />
-  One scoop
-</label>
+<pre>{@html html}</pre>
 
-<label>
-  <input type="radio" bind:group={scoops} value={2} />
-  Two scoops
-</label>
-
-<label>
-  <input type="radio" bind:group={scoops} value={3} />
-  Three scoops
-</label>
-
-<h2>Flavours</h2>
-
-<select multiple bind:value={flavours}>
-  {#each menu as flavor}
-    <option value={flavor}>
-      {flavor}
-    </option>
-  {/each}
-</select>
-
-{#if flavours.length === 0}
-  <p>Please select at least one flavour</p>
-{:else if flavours.length > scoops}
-  <p>Can't order more flavours than scoops!</p>
-{:else}
-  <p>
-    You ordered {scoops}
-    {scoops === 1 ? 'scoop' : 'scoops'}
-    of {join(flavours)}
-  </p>
-{/if}
+<style>
+  [contenteditable] {
+    padding: 0.5em;
+    border: 1px solid #eee;
+    border-radius: 4px;
+  }
+</style>
