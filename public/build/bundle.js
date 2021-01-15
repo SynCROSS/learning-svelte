@@ -27,10 +27,6 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
-
-    function append(target, node) {
-        target.appendChild(node);
-    }
     function insert(target, node, anchor) {
         target.insertBefore(node, anchor || null);
     }
@@ -40,86 +36,14 @@ var app = (function () {
     function element(name) {
         return document.createElement(name);
     }
-    function text(data) {
-        return document.createTextNode(data);
-    }
-    function space() {
-        return text(' ');
-    }
-    function listen(node, event, handler, options) {
-        node.addEventListener(event, handler, options);
-        return () => node.removeEventListener(event, handler, options);
-    }
     function attr(node, attribute, value) {
         if (value == null)
             node.removeAttribute(attribute);
         else if (node.getAttribute(attribute) !== value)
             node.setAttribute(attribute, value);
     }
-    function to_number(value) {
-        return value === '' ? null : +value;
-    }
     function children(element) {
         return Array.from(element.childNodes);
-    }
-    function set_input_value(input, value) {
-        input.value = value == null ? '' : value;
-    }
-    function set_style(node, key, value, important) {
-        node.style.setProperty(key, value, important ? 'important' : '');
-    }
-    // unfortunately this can't be a constant as that wouldn't be tree-shakeable
-    // so we cache the result instead
-    let crossorigin;
-    function is_crossorigin() {
-        if (crossorigin === undefined) {
-            crossorigin = false;
-            try {
-                if (typeof window !== 'undefined' && window.parent) {
-                    void window.parent.document;
-                }
-            }
-            catch (error) {
-                crossorigin = true;
-            }
-        }
-        return crossorigin;
-    }
-    function add_resize_listener(node, fn) {
-        const computed_style = getComputedStyle(node);
-        if (computed_style.position === 'static') {
-            node.style.position = 'relative';
-        }
-        const iframe = element('iframe');
-        iframe.setAttribute('style', 'display: block; position: absolute; top: 0; left: 0; width: 100%; height: 100%; ' +
-            'overflow: hidden; border: 0; opacity: 0; pointer-events: none; z-index: -1;');
-        iframe.setAttribute('aria-hidden', 'true');
-        iframe.tabIndex = -1;
-        const crossorigin = is_crossorigin();
-        let unsubscribe;
-        if (crossorigin) {
-            iframe.src = "data:text/html,<script>onresize=function(){parent.postMessage(0,'*')}</script>";
-            unsubscribe = listen(window, 'message', (event) => {
-                if (event.source === iframe.contentWindow)
-                    fn();
-            });
-        }
-        else {
-            iframe.src = 'about:blank';
-            iframe.onload = () => {
-                unsubscribe = listen(iframe.contentWindow, 'resize', fn);
-            };
-        }
-        append(node, iframe);
-        return () => {
-            if (crossorigin) {
-                unsubscribe();
-            }
-            else if (unsubscribe && iframe.contentWindow) {
-                unsubscribe();
-            }
-            detach(iframe);
-        };
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
@@ -130,6 +54,14 @@ var app = (function () {
     let current_component;
     function set_current_component(component) {
         current_component = component;
+    }
+    function get_current_component() {
+        if (!current_component)
+            throw new Error('Function called outside component initialization');
+        return current_component;
+    }
+    function onMount(fn) {
+        get_current_component().$$.on_mount.push(fn);
     }
 
     const dirty_components = [];
@@ -327,10 +259,6 @@ var app = (function () {
     function dispatch_dev(type, detail) {
         document.dispatchEvent(custom_event(type, Object.assign({ version: '3.31.2' }, detail)));
     }
-    function append_dev(target, node) {
-        dispatch_dev('SvelteDOMInsert', { target, node });
-        append(target, node);
-    }
     function insert_dev(target, node, anchor) {
         dispatch_dev('SvelteDOMInsert', { target, node, anchor });
         insert(target, node, anchor);
@@ -339,32 +267,12 @@ var app = (function () {
         dispatch_dev('SvelteDOMRemove', { node });
         detach(node);
     }
-    function listen_dev(node, event, handler, options, has_prevent_default, has_stop_propagation) {
-        const modifiers = options === true ? ['capture'] : options ? Array.from(Object.keys(options)) : [];
-        if (has_prevent_default)
-            modifiers.push('preventDefault');
-        if (has_stop_propagation)
-            modifiers.push('stopPropagation');
-        dispatch_dev('SvelteDOMAddEventListener', { node, event, handler, modifiers });
-        const dispose = listen(node, event, handler, options);
-        return () => {
-            dispatch_dev('SvelteDOMRemoveEventListener', { node, event, handler, modifiers });
-            dispose();
-        };
-    }
     function attr_dev(node, attribute, value) {
         attr(node, attribute, value);
         if (value == null)
             dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
-    }
-    function set_data_dev(text, data) {
-        data = '' + data;
-        if (text.wholeText === data)
-            return;
-        dispatch_dev('SvelteDOMSetData', { node: text, data });
-        text.data = data;
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -394,120 +302,32 @@ var app = (function () {
     }
 
     /* src\App.svelte generated by Svelte v3.31.2 */
-
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let input0;
-    	let t0;
-    	let input1;
-    	let t1;
-    	let p;
-    	let t2;
-    	let t3;
-    	let t4;
-    	let t5;
-    	let t6;
-    	let t7;
-    	let div;
-    	let span;
-    	let t8;
-    	let div_resize_listener;
-    	let mounted;
-    	let dispose;
+    	let canvas_1;
 
     	const block = {
     		c: function create() {
-    			input0 = element("input");
-    			t0 = space();
-    			input1 = element("input");
-    			t1 = space();
-    			p = element("p");
-    			t2 = text("size: ");
-    			t3 = text(/*w*/ ctx[0]);
-    			t4 = text("px x ");
-    			t5 = text(/*h*/ ctx[1]);
-    			t6 = text("px");
-    			t7 = space();
-    			div = element("div");
-    			span = element("span");
-    			t8 = text(/*text*/ ctx[3]);
-    			attr_dev(input0, "type", "range");
-    			attr_dev(input0, "class", "svelte-d4seyy");
-    			add_location(input0, file, 7, 0, 72);
-    			attr_dev(input1, "placeholder", "Type Something");
-    			attr_dev(input1, "class", "svelte-d4seyy");
-    			add_location(input1, file, 8, 0, 113);
-    			add_location(p, file, 10, 0, 171);
-    			set_style(span, "font-size", /*size*/ ctx[2] + "px");
-    			attr_dev(span, "class", "svelte-d4seyy");
-    			add_location(span, file, 13, 2, 250);
-    			attr_dev(div, "class", "svelte-d4seyy");
-    			add_render_callback(() => /*div_elementresize_handler*/ ctx[6].call(div));
-    			add_location(div, file, 12, 0, 199);
+    			canvas_1 = element("canvas");
+    			attr_dev(canvas_1, "width", 32);
+    			attr_dev(canvas_1, "height", 32);
+    			attr_dev(canvas_1, "class", "svelte-el5xk8");
+    			add_location(canvas_1, file, 38, 0, 929);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, input0, anchor);
-    			set_input_value(input0, /*size*/ ctx[2]);
-    			insert_dev(target, t0, anchor);
-    			insert_dev(target, input1, anchor);
-    			set_input_value(input1, /*text*/ ctx[3]);
-    			insert_dev(target, t1, anchor);
-    			insert_dev(target, p, anchor);
-    			append_dev(p, t2);
-    			append_dev(p, t3);
-    			append_dev(p, t4);
-    			append_dev(p, t5);
-    			append_dev(p, t6);
-    			insert_dev(target, t7, anchor);
-    			insert_dev(target, div, anchor);
-    			append_dev(div, span);
-    			append_dev(span, t8);
-    			div_resize_listener = add_resize_listener(div, /*div_elementresize_handler*/ ctx[6].bind(div));
-
-    			if (!mounted) {
-    				dispose = [
-    					listen_dev(input0, "change", /*input0_change_input_handler*/ ctx[4]),
-    					listen_dev(input0, "input", /*input0_change_input_handler*/ ctx[4]),
-    					listen_dev(input1, "input", /*input1_input_handler*/ ctx[5])
-    				];
-
-    				mounted = true;
-    			}
+    			insert_dev(target, canvas_1, anchor);
+    			/*canvas_1_binding*/ ctx[1](canvas_1);
     		},
-    		p: function update(ctx, [dirty]) {
-    			if (dirty & /*size*/ 4) {
-    				set_input_value(input0, /*size*/ ctx[2]);
-    			}
-
-    			if (dirty & /*text*/ 8 && input1.value !== /*text*/ ctx[3]) {
-    				set_input_value(input1, /*text*/ ctx[3]);
-    			}
-
-    			if (dirty & /*w*/ 1) set_data_dev(t3, /*w*/ ctx[0]);
-    			if (dirty & /*h*/ 2) set_data_dev(t5, /*h*/ ctx[1]);
-    			if (dirty & /*text*/ 8) set_data_dev(t8, /*text*/ ctx[3]);
-
-    			if (dirty & /*size*/ 4) {
-    				set_style(span, "font-size", /*size*/ ctx[2] + "px");
-    			}
-    		},
+    		p: noop,
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(input0);
-    			if (detaching) detach_dev(t0);
-    			if (detaching) detach_dev(input1);
-    			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(p);
-    			if (detaching) detach_dev(t7);
-    			if (detaching) detach_dev(div);
-    			div_resize_listener();
-    			mounted = false;
-    			run_all(dispose);
+    			if (detaching) detach_dev(canvas_1);
+    			/*canvas_1_binding*/ ctx[1](null);
     		}
     	};
 
@@ -525,55 +345,61 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let w;
-    	let h;
-    	let size = 42;
-    	let text = "";
+    	let canvas;
+
+    	onMount(() => {
+    		const ctx = canvas.getContext("2d");
+    		let frame = requestAnimationFrame(loop);
+
+    		function loop(t) {
+    			frame = requestAnimationFrame(loop);
+    			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    			for (let p = 0; p < imageData.data.length; p += 4) {
+    				const i = p / 4;
+    				const x = i % canvas.width;
+    				const y = i / canvas.height >>> 0;
+    				const r = 64 + 128 * x / canvas.width + 64 * Math.sin(t / 1000);
+    				const g = 64 + 128 * y / canvas.height + 64 * Math.cos(t / 1000);
+    				const b = 128;
+    				imageData.data[p + 0] = r;
+    				imageData.data[p + 1] = g;
+    				imageData.data[p + 2] = b;
+    				imageData.data[p + 3] = 255;
+    			}
+
+    			ctx.putImageData(imageData, 0, 0);
+    		}
+
+    		return () => {
+    			cancelAnimationFrame(frame);
+    		};
+    	});
+
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function input0_change_input_handler() {
-    		size = to_number(this.value);
-    		$$invalidate(2, size);
+    	function canvas_1_binding($$value) {
+    		binding_callbacks[$$value ? "unshift" : "push"](() => {
+    			canvas = $$value;
+    			$$invalidate(0, canvas);
+    		});
     	}
 
-    	function input1_input_handler() {
-    		text = this.value;
-    		$$invalidate(3, text);
-    	}
-
-    	function div_elementresize_handler() {
-    		w = this.clientWidth;
-    		h = this.clientHeight;
-    		$$invalidate(0, w);
-    		$$invalidate(1, h);
-    	}
-
-    	$$self.$capture_state = () => ({ w, h, size, text });
+    	$$self.$capture_state = () => ({ onMount, canvas });
 
     	$$self.$inject_state = $$props => {
-    		if ("w" in $$props) $$invalidate(0, w = $$props.w);
-    		if ("h" in $$props) $$invalidate(1, h = $$props.h);
-    		if ("size" in $$props) $$invalidate(2, size = $$props.size);
-    		if ("text" in $$props) $$invalidate(3, text = $$props.text);
+    		if ("canvas" in $$props) $$invalidate(0, canvas = $$props.canvas);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [
-    		w,
-    		h,
-    		size,
-    		text,
-    		input0_change_input_handler,
-    		input1_input_handler,
-    		div_elementresize_handler
-    	];
+    	return [canvas, canvas_1_binding];
     }
 
     class App extends SvelteComponentDev {
