@@ -1,11 +1,7 @@
 
 (function(l, r) { if (l.getElementById('livereloadscript')) return; r = l.createElement('script'); r.async = 1; r.src = '//' + (window.location.host || 'localhost').split(':')[0] + ':35729/livereload.js?snipver=1'; r.id = 'livereloadscript'; l.getElementsByTagName('head')[0].appendChild(r) })(window.document);
-var app = (function (marked) {
+var app = (function () {
     'use strict';
-
-    function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
-
-    var marked__default = /*#__PURE__*/_interopDefaultLegacy(marked);
 
     function noop() { }
     function add_location(element, file, line, column, char) {
@@ -31,11 +27,21 @@ var app = (function (marked) {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
+
+    function append(target, node) {
+        target.appendChild(node);
+    }
     function insert(target, node, anchor) {
         target.insertBefore(node, anchor || null);
     }
     function detach(node) {
         node.parentNode.removeChild(node);
+    }
+    function destroy_each(iterations, detaching) {
+        for (let i = 0; i < iterations.length; i += 1) {
+            if (iterations[i])
+                iterations[i].d(detaching);
+        }
     }
     function element(name) {
         return document.createElement(name);
@@ -46,12 +52,16 @@ var app = (function (marked) {
     function space() {
         return text(' ');
     }
-    function empty() {
-        return text('');
-    }
     function listen(node, event, handler, options) {
         node.addEventListener(event, handler, options);
         return () => node.removeEventListener(event, handler, options);
+    }
+    function prevent_default(fn) {
+        return function (event) {
+            event.preventDefault();
+            // @ts-ignore
+            return fn.call(this, event);
+        };
     }
     function attr(node, attribute, value) {
         if (value == null)
@@ -65,41 +75,23 @@ var app = (function (marked) {
     function set_input_value(input, value) {
         input.value = value == null ? '' : value;
     }
+    function select_option(select, value) {
+        for (let i = 0; i < select.options.length; i += 1) {
+            const option = select.options[i];
+            if (option.__value === value) {
+                option.selected = true;
+                return;
+            }
+        }
+    }
+    function select_value(select) {
+        const selected_option = select.querySelector(':checked') || select.options[0];
+        return selected_option && selected_option.__value;
+    }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
         e.initCustomEvent(type, false, false, detail);
         return e;
-    }
-    class HtmlTag {
-        constructor(anchor = null) {
-            this.a = anchor;
-            this.e = this.n = null;
-        }
-        m(html, target, anchor = null) {
-            if (!this.e) {
-                this.e = element(target.nodeName);
-                this.t = target;
-                this.h(html);
-            }
-            this.i(anchor);
-        }
-        h(html) {
-            this.e.innerHTML = html;
-            this.n = Array.from(this.e.childNodes);
-        }
-        i(anchor) {
-            for (let i = 0; i < this.n.length; i += 1) {
-                insert(this.t, this.n[i], anchor);
-            }
-        }
-        p(html) {
-            this.d();
-            this.h(html);
-            this.i(this.a);
-        }
-        d() {
-            this.n.forEach(detach);
-        }
     }
 
     let current_component;
@@ -302,6 +294,10 @@ var app = (function (marked) {
     function dispatch_dev(type, detail) {
         document.dispatchEvent(custom_event(type, Object.assign({ version: '3.31.2' }, detail)));
     }
+    function append_dev(target, node) {
+        dispatch_dev('SvelteDOMInsert', { target, node });
+        append(target, node);
+    }
     function insert_dev(target, node, anchor) {
         dispatch_dev('SvelteDOMInsert', { target, node, anchor });
         insert(target, node, anchor);
@@ -329,6 +325,26 @@ var app = (function (marked) {
             dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
+    }
+    function prop_dev(node, property, value) {
+        node[property] = value;
+        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
+    }
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
+    }
+    function validate_each_argument(arg) {
+        if (typeof arg !== 'string' && !(arg && typeof arg === 'object' && 'length' in arg)) {
+            let msg = '{#each} only iterates over array-like objects.';
+            if (typeof Symbol === 'function' && arg && Symbol.iterator in arg) {
+                msg += ' You can use a spread to convert this iterable into an array.';
+            }
+            throw new Error(msg);
+        }
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -358,57 +374,203 @@ var app = (function (marked) {
     }
 
     /* src\App.svelte generated by Svelte v3.31.2 */
+
     const file = "src\\App.svelte";
 
-    function create_fragment(ctx) {
-    	let textarea;
-    	let t;
-    	let html_tag;
-    	let raw_value = marked__default['default'](/*value*/ ctx[0]) + "";
-    	let html_anchor;
-    	let mounted;
-    	let dispose;
+    function get_each_context(ctx, list, i) {
+    	const child_ctx = ctx.slice();
+    	child_ctx[7] = list[i];
+    	return child_ctx;
+    }
+
+    // (26:4) {#each questions as question}
+    function create_each_block(ctx) {
+    	let option;
+    	let t0_value = /*question*/ ctx[7].text + "";
+    	let t0;
+    	let t1;
 
     	const block = {
     		c: function create() {
-    			textarea = element("textarea");
-    			t = space();
-    			html_anchor = empty();
-    			attr_dev(textarea, "class", "svelte-edipxk");
-    			add_location(textarea, file, 5, 0, 111);
-    			html_tag = new HtmlTag(html_anchor);
+    			option = element("option");
+    			t0 = text(t0_value);
+    			t1 = space();
+    			option.__value = ctx[7];
+    			option.value = option.__value;
+    			add_location(option, file, 26, 6, 615);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, option, anchor);
+    			append_dev(option, t0);
+    			append_dev(option, t1);
+    		},
+    		p: noop,
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(option);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_each_block.name,
+    		type: "each",
+    		source: "(26:4) {#each questions as question}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    function create_fragment(ctx) {
+    	let h2;
+    	let t1;
+    	let form;
+    	let select;
+    	let t2;
+    	let input;
+    	let t3;
+    	let button;
+    	let t4;
+    	let button_disabled_value;
+    	let t5;
+    	let p;
+    	let t6;
+
+    	let t7_value = (/*selected*/ ctx[0]
+    	? /*selected*/ ctx[0].id
+    	: "[waiting...]") + "";
+
+    	let t7;
+    	let mounted;
+    	let dispose;
+    	let each_value = /*questions*/ ctx[2];
+    	validate_each_argument(each_value);
+    	let each_blocks = [];
+
+    	for (let i = 0; i < each_value.length; i += 1) {
+    		each_blocks[i] = create_each_block(get_each_context(ctx, each_value, i));
+    	}
+
+    	const block = {
+    		c: function create() {
+    			h2 = element("h2");
+    			h2.textContent = "Insecurity questions";
+    			t1 = space();
+    			form = element("form");
+    			select = element("select");
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].c();
+    			}
+
+    			t2 = space();
+    			input = element("input");
+    			t3 = space();
+    			button = element("button");
+    			t4 = text("Submit");
+    			t5 = space();
+    			p = element("p");
+    			t6 = text("selected question ");
+    			t7 = text(t7_value);
+    			add_location(h2, file, 21, 0, 434);
+    			if (/*selected*/ ctx[0] === void 0) add_render_callback(() => /*select_change_handler*/ ctx[4].call(select));
+    			add_location(select, file, 24, 2, 514);
+    			attr_dev(input, "class", "svelte-1cxvty9");
+    			add_location(input, file, 32, 2, 708);
+    			button.disabled = button_disabled_value = !/*answer*/ ctx[1];
+    			attr_dev(button, "type", "submit");
+    			add_location(button, file, 34, 2, 741);
+    			add_location(form, file, 23, 0, 465);
+    			add_location(p, file, 37, 0, 809);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, textarea, anchor);
-    			set_input_value(textarea, /*value*/ ctx[0]);
-    			insert_dev(target, t, anchor);
-    			html_tag.m(raw_value, target, anchor);
-    			insert_dev(target, html_anchor, anchor);
+    			insert_dev(target, h2, anchor);
+    			insert_dev(target, t1, anchor);
+    			insert_dev(target, form, anchor);
+    			append_dev(form, select);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].m(select, null);
+    			}
+
+    			select_option(select, /*selected*/ ctx[0]);
+    			append_dev(form, t2);
+    			append_dev(form, input);
+    			set_input_value(input, /*answer*/ ctx[1]);
+    			append_dev(form, t3);
+    			append_dev(form, button);
+    			append_dev(button, t4);
+    			insert_dev(target, t5, anchor);
+    			insert_dev(target, p, anchor);
+    			append_dev(p, t6);
+    			append_dev(p, t7);
 
     			if (!mounted) {
-    				dispose = listen_dev(textarea, "input", /*textarea_input_handler*/ ctx[1]);
+    				dispose = [
+    					listen_dev(select, "change", /*select_change_handler*/ ctx[4]),
+    					listen_dev(select, "blur", /*blur_handler*/ ctx[5], false, false, false),
+    					listen_dev(input, "input", /*input_input_handler*/ ctx[6]),
+    					listen_dev(form, "submit", prevent_default(/*handleSubmit*/ ctx[3]), false, true, false)
+    				];
+
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*value*/ 1) {
-    				set_input_value(textarea, /*value*/ ctx[0]);
+    			if (dirty & /*questions*/ 4) {
+    				each_value = /*questions*/ ctx[2];
+    				validate_each_argument(each_value);
+    				let i;
+
+    				for (i = 0; i < each_value.length; i += 1) {
+    					const child_ctx = get_each_context(ctx, each_value, i);
+
+    					if (each_blocks[i]) {
+    						each_blocks[i].p(child_ctx, dirty);
+    					} else {
+    						each_blocks[i] = create_each_block(child_ctx);
+    						each_blocks[i].c();
+    						each_blocks[i].m(select, null);
+    					}
+    				}
+
+    				for (; i < each_blocks.length; i += 1) {
+    					each_blocks[i].d(1);
+    				}
+
+    				each_blocks.length = each_value.length;
     			}
 
-    			if (dirty & /*value*/ 1 && raw_value !== (raw_value = marked__default['default'](/*value*/ ctx[0]) + "")) html_tag.p(raw_value);
+    			if (dirty & /*selected, questions*/ 5) {
+    				select_option(select, /*selected*/ ctx[0]);
+    			}
+
+    			if (dirty & /*answer*/ 2 && input.value !== /*answer*/ ctx[1]) {
+    				set_input_value(input, /*answer*/ ctx[1]);
+    			}
+
+    			if (dirty & /*answer*/ 2 && button_disabled_value !== (button_disabled_value = !/*answer*/ ctx[1])) {
+    				prop_dev(button, "disabled", button_disabled_value);
+    			}
+
+    			if (dirty & /*selected*/ 1 && t7_value !== (t7_value = (/*selected*/ ctx[0]
+    			? /*selected*/ ctx[0].id
+    			: "[waiting...]") + "")) set_data_dev(t7, t7_value);
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(textarea);
-    			if (detaching) detach_dev(t);
-    			if (detaching) detach_dev(html_anchor);
-    			if (detaching) html_tag.d();
+    			if (detaching) detach_dev(h2);
+    			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(form);
+    			destroy_each(each_blocks, detaching);
+    			if (detaching) detach_dev(t5);
+    			if (detaching) detach_dev(p);
     			mounted = false;
-    			dispose();
+    			run_all(dispose);
     		}
     	};
 
@@ -426,29 +588,74 @@ var app = (function (marked) {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let value = `Some words are *italic*, some are **bold**`;
+
+    	let questions = [
+    		{
+    			id: 1,
+    			text: `Where did you go to school?`
+    		},
+    		{
+    			id: 2,
+    			text: `What is your mother's name?`
+    		},
+    		{
+    			id: 3,
+    			text: `What is another personal fact that an attacker could easily find with Google?`
+    		}
+    	];
+
+    	let selected;
+    	let answer = "";
+
+    	function handleSubmit() {
+    		alert(`answered question ${selected.id} (${selected.text}) with "${answer}"`);
+    	}
+
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function textarea_input_handler() {
-    		value = this.value;
-    		$$invalidate(0, value);
+    	function select_change_handler() {
+    		selected = select_value(this);
+    		$$invalidate(0, selected);
+    		$$invalidate(2, questions);
     	}
 
-    	$$self.$capture_state = () => ({ marked: marked__default['default'], value });
+    	const blur_handler = () => $$invalidate(1, answer = "");
+
+    	function input_input_handler() {
+    		answer = this.value;
+    		$$invalidate(1, answer);
+    	}
+
+    	$$self.$capture_state = () => ({
+    		questions,
+    		selected,
+    		answer,
+    		handleSubmit
+    	});
 
     	$$self.$inject_state = $$props => {
-    		if ("value" in $$props) $$invalidate(0, value = $$props.value);
+    		if ("questions" in $$props) $$invalidate(2, questions = $$props.questions);
+    		if ("selected" in $$props) $$invalidate(0, selected = $$props.selected);
+    		if ("answer" in $$props) $$invalidate(1, answer = $$props.answer);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [value, textarea_input_handler];
+    	return [
+    		selected,
+    		answer,
+    		questions,
+    		handleSubmit,
+    		select_change_handler,
+    		blur_handler,
+    		input_input_handler
+    	];
     }
 
     class App extends SvelteComponentDev {
@@ -471,5 +678,5 @@ var app = (function (marked) {
 
     return app;
 
-}(marked));
+}());
 //# sourceMappingURL=bundle.js.map
