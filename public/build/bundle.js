@@ -50,6 +50,15 @@ var app = (function () {
         node.addEventListener(event, handler, options);
         return () => node.removeEventListener(event, handler, options);
     }
+    function attr(node, attribute, value) {
+        if (value == null)
+            node.removeAttribute(attribute);
+        else if (node.getAttribute(attribute) !== value)
+            node.setAttribute(attribute, value);
+    }
+    function to_number(value) {
+        return value === '' ? null : +value;
+    }
     function children(element) {
         return Array.from(element.childNodes);
     }
@@ -287,6 +296,13 @@ var app = (function () {
             dispose();
         };
     }
+    function attr_dev(node, attribute, value) {
+        attr(node, attribute, value);
+        if (value == null)
+            dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
+        else
+            dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
+    }
     function set_data_dev(text, data) {
         data = '' + data;
         if (text.wholeText === data)
@@ -326,58 +342,133 @@ var app = (function () {
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let input;
+    	let label0;
+    	let input0;
     	let t0;
-    	let h1;
+    	let input1;
     	let t1;
+    	let label1;
+    	let input2;
     	let t2;
+    	let input3;
     	let t3;
+    	let p;
+    	let t4;
+    	let t5;
+    	let t6;
+    	let t7;
+    	let t8_value = /*a*/ ctx[0] + /*b*/ ctx[1] + "";
+    	let t8;
     	let mounted;
     	let dispose;
 
     	const block = {
     		c: function create() {
-    			input = element("input");
+    			label0 = element("label");
+    			input0 = element("input");
     			t0 = space();
-    			h1 = element("h1");
-    			t1 = text("Hello ");
-    			t2 = text(/*world*/ ctx[0]);
-    			t3 = text("!");
-    			add_location(input, file, 4, 0, 43);
-    			add_location(h1, file, 6, 0, 73);
+    			input1 = element("input");
+    			t1 = space();
+    			label1 = element("label");
+    			input2 = element("input");
+    			t2 = space();
+    			input3 = element("input");
+    			t3 = space();
+    			p = element("p");
+    			t4 = text(/*a*/ ctx[0]);
+    			t5 = text(" + ");
+    			t6 = text(/*b*/ ctx[1]);
+    			t7 = text(" = ");
+    			t8 = text(t8_value);
+    			attr_dev(input0, "type", "number");
+    			attr_dev(input0, "min", "0");
+    			attr_dev(input0, "max", "10");
+    			add_location(input0, file, 6, 2, 56);
+    			attr_dev(input1, "type", "range");
+    			attr_dev(input1, "min", "0");
+    			attr_dev(input1, "max", "10");
+    			add_location(input1, file, 7, 2, 114);
+    			add_location(label0, file, 5, 0, 46);
+    			attr_dev(input2, "type", "number");
+    			attr_dev(input2, "min", "0");
+    			attr_dev(input2, "max", "10");
+    			add_location(input2, file, 11, 2, 189);
+    			attr_dev(input3, "type", "range");
+    			attr_dev(input3, "min", "0");
+    			attr_dev(input3, "max", "10");
+    			add_location(input3, file, 12, 2, 247);
+    			add_location(label1, file, 10, 0, 179);
+    			add_location(p, file, 15, 0, 312);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, input, anchor);
-    			set_input_value(input, /*world*/ ctx[0]);
-    			insert_dev(target, t0, anchor);
-    			insert_dev(target, h1, anchor);
-    			append_dev(h1, t1);
-    			append_dev(h1, t2);
-    			append_dev(h1, t3);
+    			insert_dev(target, label0, anchor);
+    			append_dev(label0, input0);
+    			set_input_value(input0, /*a*/ ctx[0]);
+    			append_dev(label0, t0);
+    			append_dev(label0, input1);
+    			set_input_value(input1, /*a*/ ctx[0]);
+    			insert_dev(target, t1, anchor);
+    			insert_dev(target, label1, anchor);
+    			append_dev(label1, input2);
+    			set_input_value(input2, /*b*/ ctx[1]);
+    			append_dev(label1, t2);
+    			append_dev(label1, input3);
+    			set_input_value(input3, /*b*/ ctx[1]);
+    			insert_dev(target, t3, anchor);
+    			insert_dev(target, p, anchor);
+    			append_dev(p, t4);
+    			append_dev(p, t5);
+    			append_dev(p, t6);
+    			append_dev(p, t7);
+    			append_dev(p, t8);
 
     			if (!mounted) {
-    				dispose = listen_dev(input, "input", /*input_input_handler*/ ctx[1]);
+    				dispose = [
+    					listen_dev(input0, "input", /*input0_input_handler*/ ctx[2]),
+    					listen_dev(input1, "change", /*input1_change_input_handler*/ ctx[3]),
+    					listen_dev(input1, "input", /*input1_change_input_handler*/ ctx[3]),
+    					listen_dev(input2, "input", /*input2_input_handler*/ ctx[4]),
+    					listen_dev(input3, "change", /*input3_change_input_handler*/ ctx[5]),
+    					listen_dev(input3, "input", /*input3_change_input_handler*/ ctx[5])
+    				];
+
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*world*/ 1 && input.value !== /*world*/ ctx[0]) {
-    				set_input_value(input, /*world*/ ctx[0]);
+    			if (dirty & /*a*/ 1 && to_number(input0.value) !== /*a*/ ctx[0]) {
+    				set_input_value(input0, /*a*/ ctx[0]);
     			}
 
-    			if (dirty & /*world*/ 1) set_data_dev(t2, /*world*/ ctx[0]);
+    			if (dirty & /*a*/ 1) {
+    				set_input_value(input1, /*a*/ ctx[0]);
+    			}
+
+    			if (dirty & /*b*/ 2 && to_number(input2.value) !== /*b*/ ctx[1]) {
+    				set_input_value(input2, /*b*/ ctx[1]);
+    			}
+
+    			if (dirty & /*b*/ 2) {
+    				set_input_value(input3, /*b*/ ctx[1]);
+    			}
+
+    			if (dirty & /*a*/ 1) set_data_dev(t4, /*a*/ ctx[0]);
+    			if (dirty & /*b*/ 2) set_data_dev(t6, /*b*/ ctx[1]);
+    			if (dirty & /*a, b*/ 3 && t8_value !== (t8_value = /*a*/ ctx[0] + /*b*/ ctx[1] + "")) set_data_dev(t8, t8_value);
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(input);
-    			if (detaching) detach_dev(t0);
-    			if (detaching) detach_dev(h1);
+    			if (detaching) detach_dev(label0);
+    			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(label1);
+    			if (detaching) detach_dev(t3);
+    			if (detaching) detach_dev(p);
     			mounted = false;
-    			dispose();
+    			run_all(dispose);
     		}
     	};
 
@@ -395,29 +486,53 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let world = "World";
+    	let a = 1;
+    	let b = 2;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function input_input_handler() {
-    		world = this.value;
-    		$$invalidate(0, world);
+    	function input0_input_handler() {
+    		a = to_number(this.value);
+    		$$invalidate(0, a);
     	}
 
-    	$$self.$capture_state = () => ({ world });
+    	function input1_change_input_handler() {
+    		a = to_number(this.value);
+    		$$invalidate(0, a);
+    	}
+
+    	function input2_input_handler() {
+    		b = to_number(this.value);
+    		$$invalidate(1, b);
+    	}
+
+    	function input3_change_input_handler() {
+    		b = to_number(this.value);
+    		$$invalidate(1, b);
+    	}
+
+    	$$self.$capture_state = () => ({ a, b });
 
     	$$self.$inject_state = $$props => {
-    		if ("world" in $$props) $$invalidate(0, world = $$props.world);
+    		if ("a" in $$props) $$invalidate(0, a = $$props.a);
+    		if ("b" in $$props) $$invalidate(1, b = $$props.b);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [world, input_input_handler];
+    	return [
+    		a,
+    		b,
+    		input0_input_handler,
+    		input1_change_input_handler,
+    		input2_input_handler,
+    		input3_change_input_handler
+    	];
     }
 
     class App extends SvelteComponentDev {
