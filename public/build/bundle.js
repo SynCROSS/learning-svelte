@@ -52,16 +52,12 @@ var app = (function () {
     function space() {
         return text(' ');
     }
+    function empty() {
+        return text('');
+    }
     function listen(node, event, handler, options) {
         node.addEventListener(event, handler, options);
         return () => node.removeEventListener(event, handler, options);
-    }
-    function prevent_default(fn) {
-        return function (event) {
-            event.preventDefault();
-            // @ts-ignore
-            return fn.call(this, event);
-        };
     }
     function attr(node, attribute, value) {
         if (value == null)
@@ -72,21 +68,14 @@ var app = (function () {
     function children(element) {
         return Array.from(element.childNodes);
     }
-    function set_input_value(input, value) {
-        input.value = value == null ? '' : value;
-    }
-    function select_option(select, value) {
+    function select_options(select, value) {
         for (let i = 0; i < select.options.length; i += 1) {
             const option = select.options[i];
-            if (option.__value === value) {
-                option.selected = true;
-                return;
-            }
+            option.selected = ~value.indexOf(option.__value);
         }
     }
-    function select_value(select) {
-        const selected_option = select.querySelector(':checked') || select.options[0];
-        return selected_option && selected_option.__value;
+    function select_multiple_value(select) {
+        return [].map.call(select.querySelectorAll(':checked'), option => option.__value);
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
@@ -326,10 +315,6 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
-    function prop_dev(node, property, value) {
-        node[property] = value;
-        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
-    }
     function set_data_dev(text, data) {
         data = '' + data;
         if (text.wholeText === data)
@@ -379,14 +364,14 @@ var app = (function () {
 
     function get_each_context(ctx, list, i) {
     	const child_ctx = ctx.slice();
-    	child_ctx[7] = list[i];
+    	child_ctx[8] = list[i];
     	return child_ctx;
     }
 
-    // (26:4) {#each questions as question}
+    // (34:2) {#each menu as flavor}
     function create_each_block(ctx) {
     	let option;
-    	let t0_value = /*question*/ ctx[7].text + "";
+    	let t0_value = /*flavor*/ ctx[8] + "";
     	let t0;
     	let t1;
 
@@ -395,9 +380,9 @@ var app = (function () {
     			option = element("option");
     			t0 = text(t0_value);
     			t1 = space();
-    			option.__value = ctx[7];
+    			option.__value = ctx[8];
     			option.value = option.__value;
-    			add_location(option, file, 26, 6, 615);
+    			add_location(option, file, 34, 4, 675);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, option, anchor);
@@ -414,7 +399,120 @@ var app = (function () {
     		block,
     		id: create_each_block.name,
     		type: "each",
-    		source: "(26:4) {#each questions as question}",
+    		source: "(34:2) {#each menu as flavor}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (45:0) {:else}
+    function create_else_block(ctx) {
+    	let p;
+    	let t0;
+    	let t1;
+    	let t2;
+    	let t3_value = (/*scoops*/ ctx[0] === 1 ? "scoop" : "scoops") + "";
+    	let t3;
+    	let t4;
+    	let t5_value = join(/*flavours*/ ctx[1]) + "";
+    	let t5;
+
+    	const block = {
+    		c: function create() {
+    			p = element("p");
+    			t0 = text("You ordered ");
+    			t1 = text(/*scoops*/ ctx[0]);
+    			t2 = space();
+    			t3 = text(t3_value);
+    			t4 = text("\n    of ");
+    			t5 = text(t5_value);
+    			add_location(p, file, 45, 2, 915);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    			append_dev(p, t0);
+    			append_dev(p, t1);
+    			append_dev(p, t2);
+    			append_dev(p, t3);
+    			append_dev(p, t4);
+    			append_dev(p, t5);
+    		},
+    		p: function update(ctx, dirty) {
+    			if (dirty & /*scoops*/ 1) set_data_dev(t1, /*scoops*/ ctx[0]);
+    			if (dirty & /*scoops*/ 1 && t3_value !== (t3_value = (/*scoops*/ ctx[0] === 1 ? "scoop" : "scoops") + "")) set_data_dev(t3, t3_value);
+    			if (dirty & /*flavours*/ 2 && t5_value !== (t5_value = join(/*flavours*/ ctx[1]) + "")) set_data_dev(t5, t5_value);
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_else_block.name,
+    		type: "else",
+    		source: "(45:0) {:else}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (43:35) 
+    function create_if_block_1(ctx) {
+    	let p;
+
+    	const block = {
+    		c: function create() {
+    			p = element("p");
+    			p.textContent = "Can't order more flavours than scoops!";
+    			add_location(p, file, 43, 2, 859);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    		},
+    		p: noop,
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block_1.name,
+    		type: "if",
+    		source: "(43:35) ",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (41:0) {#if flavours.length === 0}
+    function create_if_block(ctx) {
+    	let p;
+
+    	const block = {
+    		c: function create() {
+    			p = element("p");
+    			p.textContent = "Please select at least one flavour";
+    			add_location(p, file, 41, 2, 779);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    		},
+    		p: noop,
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block.name,
+    		type: "if",
+    		source: "(41:0) {#if flavours.length === 0}",
     		ctx
     	});
 
@@ -422,28 +520,28 @@ var app = (function () {
     }
 
     function create_fragment(ctx) {
-    	let h2;
+    	let h20;
     	let t1;
-    	let form;
-    	let select;
+    	let label0;
+    	let input0;
     	let t2;
-    	let input;
     	let t3;
-    	let button;
+    	let label1;
+    	let input1;
     	let t4;
-    	let button_disabled_value;
     	let t5;
-    	let p;
+    	let label2;
+    	let input2;
     	let t6;
-
-    	let t7_value = (/*selected*/ ctx[0]
-    	? /*selected*/ ctx[0].id
-    	: "[waiting...]") + "";
-
     	let t7;
+    	let h21;
+    	let t9;
+    	let select;
+    	let t10;
+    	let if_block_anchor;
     	let mounted;
     	let dispose;
-    	let each_value = /*questions*/ ctx[2];
+    	let each_value = /*menu*/ ctx[2];
     	validate_each_argument(each_value);
     	let each_blocks = [];
 
@@ -451,77 +549,128 @@ var app = (function () {
     		each_blocks[i] = create_each_block(get_each_context(ctx, each_value, i));
     	}
 
+    	function select_block_type(ctx, dirty) {
+    		if (/*flavours*/ ctx[1].length === 0) return create_if_block;
+    		if (/*flavours*/ ctx[1].length > /*scoops*/ ctx[0]) return create_if_block_1;
+    		return create_else_block;
+    	}
+
+    	let current_block_type = select_block_type(ctx);
+    	let if_block = current_block_type(ctx);
+
     	const block = {
     		c: function create() {
-    			h2 = element("h2");
-    			h2.textContent = "Insecurity questions";
+    			h20 = element("h2");
+    			h20.textContent = "Size";
     			t1 = space();
-    			form = element("form");
+    			label0 = element("label");
+    			input0 = element("input");
+    			t2 = text("\n  One scoop");
+    			t3 = space();
+    			label1 = element("label");
+    			input1 = element("input");
+    			t4 = text("\n  Two scoops");
+    			t5 = space();
+    			label2 = element("label");
+    			input2 = element("input");
+    			t6 = text("\n  Three scoops");
+    			t7 = space();
+    			h21 = element("h2");
+    			h21.textContent = "Flavours";
+    			t9 = space();
     			select = element("select");
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				each_blocks[i].c();
     			}
 
-    			t2 = space();
-    			input = element("input");
-    			t3 = space();
-    			button = element("button");
-    			t4 = text("Submit");
-    			t5 = space();
-    			p = element("p");
-    			t6 = text("selected question ");
-    			t7 = text(t7_value);
-    			add_location(h2, file, 21, 0, 434);
-    			if (/*selected*/ ctx[0] === void 0) add_render_callback(() => /*select_change_handler*/ ctx[4].call(select));
-    			add_location(select, file, 24, 2, 514);
-    			attr_dev(input, "class", "svelte-1cxvty9");
-    			add_location(input, file, 32, 2, 708);
-    			button.disabled = button_disabled_value = !/*answer*/ ctx[1];
-    			attr_dev(button, "type", "submit");
-    			add_location(button, file, 34, 2, 741);
-    			add_location(form, file, 23, 0, 465);
-    			add_location(p, file, 37, 0, 809);
+    			t10 = space();
+    			if_block.c();
+    			if_block_anchor = empty();
+    			add_location(h20, file, 13, 0, 313);
+    			attr_dev(input0, "type", "radio");
+    			input0.__value = 1;
+    			input0.value = input0.__value;
+    			/*$$binding_groups*/ ctx[4][0].push(input0);
+    			add_location(input0, file, 16, 2, 338);
+    			add_location(label0, file, 15, 0, 328);
+    			attr_dev(input1, "type", "radio");
+    			input1.__value = 2;
+    			input1.value = input1.__value;
+    			/*$$binding_groups*/ ctx[4][0].push(input1);
+    			add_location(input1, file, 21, 2, 423);
+    			add_location(label1, file, 20, 0, 413);
+    			attr_dev(input2, "type", "radio");
+    			input2.__value = 3;
+    			input2.value = input2.__value;
+    			/*$$binding_groups*/ ctx[4][0].push(input2);
+    			add_location(input2, file, 26, 2, 509);
+    			add_location(label2, file, 25, 0, 499);
+    			add_location(h21, file, 30, 0, 587);
+    			select.multiple = true;
+    			if (/*flavours*/ ctx[1] === void 0) add_render_callback(() => /*select_change_handler*/ ctx[7].call(select));
+    			add_location(select, file, 32, 0, 606);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, h2, anchor);
+    			insert_dev(target, h20, anchor);
     			insert_dev(target, t1, anchor);
-    			insert_dev(target, form, anchor);
-    			append_dev(form, select);
+    			insert_dev(target, label0, anchor);
+    			append_dev(label0, input0);
+    			input0.checked = input0.__value === /*scoops*/ ctx[0];
+    			append_dev(label0, t2);
+    			insert_dev(target, t3, anchor);
+    			insert_dev(target, label1, anchor);
+    			append_dev(label1, input1);
+    			input1.checked = input1.__value === /*scoops*/ ctx[0];
+    			append_dev(label1, t4);
+    			insert_dev(target, t5, anchor);
+    			insert_dev(target, label2, anchor);
+    			append_dev(label2, input2);
+    			input2.checked = input2.__value === /*scoops*/ ctx[0];
+    			append_dev(label2, t6);
+    			insert_dev(target, t7, anchor);
+    			insert_dev(target, h21, anchor);
+    			insert_dev(target, t9, anchor);
+    			insert_dev(target, select, anchor);
 
     			for (let i = 0; i < each_blocks.length; i += 1) {
     				each_blocks[i].m(select, null);
     			}
 
-    			select_option(select, /*selected*/ ctx[0]);
-    			append_dev(form, t2);
-    			append_dev(form, input);
-    			set_input_value(input, /*answer*/ ctx[1]);
-    			append_dev(form, t3);
-    			append_dev(form, button);
-    			append_dev(button, t4);
-    			insert_dev(target, t5, anchor);
-    			insert_dev(target, p, anchor);
-    			append_dev(p, t6);
-    			append_dev(p, t7);
+    			select_options(select, /*flavours*/ ctx[1]);
+    			insert_dev(target, t10, anchor);
+    			if_block.m(target, anchor);
+    			insert_dev(target, if_block_anchor, anchor);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(select, "change", /*select_change_handler*/ ctx[4]),
-    					listen_dev(select, "blur", /*blur_handler*/ ctx[5], false, false, false),
-    					listen_dev(input, "input", /*input_input_handler*/ ctx[6]),
-    					listen_dev(form, "submit", prevent_default(/*handleSubmit*/ ctx[3]), false, true, false)
+    					listen_dev(input0, "change", /*input0_change_handler*/ ctx[3]),
+    					listen_dev(input1, "change", /*input1_change_handler*/ ctx[5]),
+    					listen_dev(input2, "change", /*input2_change_handler*/ ctx[6]),
+    					listen_dev(select, "change", /*select_change_handler*/ ctx[7])
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*questions*/ 4) {
-    				each_value = /*questions*/ ctx[2];
+    			if (dirty & /*scoops*/ 1) {
+    				input0.checked = input0.__value === /*scoops*/ ctx[0];
+    			}
+
+    			if (dirty & /*scoops*/ 1) {
+    				input1.checked = input1.__value === /*scoops*/ ctx[0];
+    			}
+
+    			if (dirty & /*scoops*/ 1) {
+    				input2.checked = input2.__value === /*scoops*/ ctx[0];
+    			}
+
+    			if (dirty & /*menu*/ 4) {
+    				each_value = /*menu*/ ctx[2];
     				validate_each_argument(each_value);
     				let i;
 
@@ -544,31 +693,43 @@ var app = (function () {
     				each_blocks.length = each_value.length;
     			}
 
-    			if (dirty & /*selected, questions*/ 5) {
-    				select_option(select, /*selected*/ ctx[0]);
+    			if (dirty & /*flavours, menu*/ 6) {
+    				select_options(select, /*flavours*/ ctx[1]);
     			}
 
-    			if (dirty & /*answer*/ 2 && input.value !== /*answer*/ ctx[1]) {
-    				set_input_value(input, /*answer*/ ctx[1]);
-    			}
+    			if (current_block_type === (current_block_type = select_block_type(ctx)) && if_block) {
+    				if_block.p(ctx, dirty);
+    			} else {
+    				if_block.d(1);
+    				if_block = current_block_type(ctx);
 
-    			if (dirty & /*answer*/ 2 && button_disabled_value !== (button_disabled_value = !/*answer*/ ctx[1])) {
-    				prop_dev(button, "disabled", button_disabled_value);
+    				if (if_block) {
+    					if_block.c();
+    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    				}
     			}
-
-    			if (dirty & /*selected*/ 1 && t7_value !== (t7_value = (/*selected*/ ctx[0]
-    			? /*selected*/ ctx[0].id
-    			: "[waiting...]") + "")) set_data_dev(t7, t7_value);
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(h2);
+    			if (detaching) detach_dev(h20);
     			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(form);
-    			destroy_each(each_blocks, detaching);
+    			if (detaching) detach_dev(label0);
+    			/*$$binding_groups*/ ctx[4][0].splice(/*$$binding_groups*/ ctx[4][0].indexOf(input0), 1);
+    			if (detaching) detach_dev(t3);
+    			if (detaching) detach_dev(label1);
+    			/*$$binding_groups*/ ctx[4][0].splice(/*$$binding_groups*/ ctx[4][0].indexOf(input1), 1);
     			if (detaching) detach_dev(t5);
-    			if (detaching) detach_dev(p);
+    			if (detaching) detach_dev(label2);
+    			/*$$binding_groups*/ ctx[4][0].splice(/*$$binding_groups*/ ctx[4][0].indexOf(input2), 1);
+    			if (detaching) detach_dev(t7);
+    			if (detaching) detach_dev(h21);
+    			if (detaching) detach_dev(t9);
+    			if (detaching) detach_dev(select);
+    			destroy_each(each_blocks, detaching);
+    			if (detaching) detach_dev(t10);
+    			if_block.d(detaching);
+    			if (detaching) detach_dev(if_block_anchor);
     			mounted = false;
     			run_all(dispose);
     		}
@@ -585,62 +746,51 @@ var app = (function () {
     	return block;
     }
 
+    function join(flavours) {
+    	if (flavours.length === 1) return flavours[0];
+    	return `${flavours.slice(0, -1).join(", ")} and ${flavours[flavours.length - 1]}`;
+    }
+
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-
-    	let questions = [
-    		{
-    			id: 1,
-    			text: `Where did you go to school?`
-    		},
-    		{
-    			id: 2,
-    			text: `What is your mother's name?`
-    		},
-    		{
-    			id: 3,
-    			text: `What is another personal fact that an attacker could easily find with Google?`
-    		}
-    	];
-
-    	let selected;
-    	let answer = "";
-
-    	function handleSubmit() {
-    		alert(`answered question ${selected.id} (${selected.text}) with "${answer}"`);
-    	}
-
+    	let scoops = 1;
+    	let flavours = [];
+    	const menu = ["Cookies and Storages", "Linux Mint", "Raspberry Pi"];
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
+    	const $$binding_groups = [[]];
+
+    	function input0_change_handler() {
+    		scoops = this.__value;
+    		$$invalidate(0, scoops);
+    	}
+
+    	function input1_change_handler() {
+    		scoops = this.__value;
+    		$$invalidate(0, scoops);
+    	}
+
+    	function input2_change_handler() {
+    		scoops = this.__value;
+    		$$invalidate(0, scoops);
+    	}
+
     	function select_change_handler() {
-    		selected = select_value(this);
-    		$$invalidate(0, selected);
-    		$$invalidate(2, questions);
+    		flavours = select_multiple_value(this);
+    		$$invalidate(1, flavours);
+    		$$invalidate(2, menu);
     	}
 
-    	const blur_handler = () => $$invalidate(1, answer = "");
-
-    	function input_input_handler() {
-    		answer = this.value;
-    		$$invalidate(1, answer);
-    	}
-
-    	$$self.$capture_state = () => ({
-    		questions,
-    		selected,
-    		answer,
-    		handleSubmit
-    	});
+    	$$self.$capture_state = () => ({ scoops, flavours, menu, join });
 
     	$$self.$inject_state = $$props => {
-    		if ("questions" in $$props) $$invalidate(2, questions = $$props.questions);
-    		if ("selected" in $$props) $$invalidate(0, selected = $$props.selected);
-    		if ("answer" in $$props) $$invalidate(1, answer = $$props.answer);
+    		if ("scoops" in $$props) $$invalidate(0, scoops = $$props.scoops);
+    		if ("flavours" in $$props) $$invalidate(1, flavours = $$props.flavours);
     	};
 
     	if ($$props && "$$inject" in $$props) {
@@ -648,13 +798,14 @@ var app = (function () {
     	}
 
     	return [
-    		selected,
-    		answer,
-    		questions,
-    		handleSubmit,
-    		select_change_handler,
-    		blur_handler,
-    		input_input_handler
+    		scoops,
+    		flavours,
+    		menu,
+    		input0_change_handler,
+    		$$binding_groups,
+    		input1_change_handler,
+    		input2_change_handler,
+    		select_change_handler
     	];
     }
 

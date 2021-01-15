@@ -1,46 +1,51 @@
 <script>
-  let questions = [
-    { id: 1, text: `Where did you go to school?` },
-    { id: 2, text: `What is your mother's name?` },
-    {
-      id: 3,
-      text: `What is another personal fact that an attacker could easily find with Google?`,
-    },
-  ];
+  let scoops = 1;
+  let flavours = [];
+  const menu = ['Cookies and Storages', 'Linux Mint', 'Raspberry Pi'];
 
-  let selected;
-
-  let answer = '';
-
-  function handleSubmit() {
-    alert(
-      `answered question ${selected.id} (${selected.text}) with "${answer}"`,
-    );
+  function join(flavours) {
+    if (flavours.length === 1) return flavours[0];
+    return `${flavours.slice(0, -1).join(', ')} and ${
+      flavours[flavours.length - 1]
+    }`;
   }
 </script>
 
-<h2>Insecurity questions</h2>
+<h2>Size</h2>
 
-<form on:submit|preventDefault={handleSubmit}>
-  <select bind:value={selected} on:blur={() => (answer = '')}>
-    {#each questions as question}
-      <option value={question}>
-        {question.text}
-      </option>
-    {/each}
-  </select>
+<label>
+  <input type="radio" bind:group={scoops} value={1} />
+  One scoop
+</label>
 
-  <input bind:value={answer} />
+<label>
+  <input type="radio" bind:group={scoops} value={2} />
+  Two scoops
+</label>
 
-  <button disabled={!answer} type="submit"> Submit </button>
-</form>
+<label>
+  <input type="radio" bind:group={scoops} value={3} />
+  Three scoops
+</label>
 
-<p>selected question {selected ? selected.id : '[waiting...]'}</p>
+<h2>Flavours</h2>
 
-<style>
-  input {
-    display: block;
-    width: 500px;
-    max-width: 100%;
-  }
-</style>
+<select multiple bind:value={flavours}>
+  {#each menu as flavor}
+    <option value={flavor}>
+      {flavor}
+    </option>
+  {/each}
+</select>
+
+{#if flavours.length === 0}
+  <p>Please select at least one flavour</p>
+{:else if flavours.length > scoops}
+  <p>Can't order more flavours than scoops!</p>
+{:else}
+  <p>
+    You ordered {scoops}
+    {scoops === 1 ? 'scoop' : 'scoops'}
+    of {join(flavours)}
+  </p>
+{/if}
