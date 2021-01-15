@@ -1,52 +1,154 @@
 <script>
-  let todos = [];
+  // These values are bound to properties of the video
+  let time = 0;
+  let duration;
+  let paused = true;
 
-  function add() {
-    todos.reverse();
-    todos = todos.concat({ done: false, text: '' });
-    todos.reverse();
+  let showControls = true;
+  let showControlsTimeout;
+
+  function handleMousemove(e) {
+    // Make the controls visible, but fade out after
+    // 2.5 seconds of inactivity
+    clearTimeout(showControlsTimeout);
+    showControlsTimeout = setTimeout(() => (showControls = false), 2500);
+    showControls = true;
+
+    if (!(e.buttons & 1)) return; // mouse not down
+    if (!duration) return; // video not loaded yet
+
+    const { left, right } = this.getBoundingClientRect();
+    time = (duration * (e.clientX - left)) / (right - left);
   }
 
-  function clear() {
-    todos = todos.filter(t => !t.done);
+  function handleMousedown(e) {
+    // we can't rely on the built-in click event, because it fires
+    // after a drag — we have to listen for clicks ourselves
+
+    function handleMouseup() {
+      if (paused) e.target.play();
+      else e.target.pause();
+      cancel();
+    }
+
+    function cancel() {
+      e.target.removeEventListener('mouseup', handleMouseup);
+    }
+
+    e.target.addEventListener('mouseup', handleMouseup);
+
+    setTimeout(cancel, 200);
   }
-  const selectAllTrue = () => {
-    const checkboxes = document.querySelectorAll("input[type='checkbox']");
 
-    if (todos.length === 0) {
-      return false;
-    }
-    for (const todo of todos) {
-      todo.done = !todo.done;
-      for (const checkbox of checkboxes) {
-        checkbox.checked = todo.done;
-      }
-    }
-  };
+  function format(seconds) {
+    if (isNaN(seconds)) return '...';
 
-  $: remaining = todos.filter(t => !t.done).length;
+    const minutes = Math.floor(seconds / 60);
+    seconds = Math.floor(seconds % 60);
+    if (seconds < 10) seconds = '0' + seconds;
+
+    return `${minutes}:${seconds}`;
+  }
 </script>
 
-<h1>Todos</h1>
+<h1>Caminandes: Llamigos</h1>
+<p>
+  From <a href="https://cloud.blender.org/open-projects"
+    >Blender Open Projects</a
+  >. CC-BY
+</p>
+The complete set of bindings for &lbrace;audio&rbrace; and &lbrace;video&rbrace;
+is as follows — six readonly bindings...
+<ul>
+  <li>duration (readonly) — the total duration of the video, in seconds</li>
+  <li>buffered (readonly) — an array of &lbrace;start, end&rbrace; objects</li>
+  <li>seekable (readonly) — ditto</li>
+  <li>played (readonly) — ditto</li>
+  <li>seeking (readonly) — boolean</li>
+  <li>ended (readonly) — boolean</li>
+</ul>
+...and five two-way bindings:
+<ul>
+  <li>currentTime — the current point in the video, in seconds</li>
+  <li>playbackRate — how fast to play the video, where 1 is 'normal'</li>
+  <li>paused — this one should be self-explanatory</li>
+  <li>volume — a value between 0 and 1</li>
+  <li>muted — a boolean value where true is muted</li>
+</ul>
+Videos additionally have readonly videoWidth and videoHeight bindings.
+<div>
+  <video
+    poster="https://sveltejs.github.io/assets/caminandes-llamigos.jpg"
+    src="https://sveltejs.github.io/assets/caminandes-llamigos.mp4"
+    on:mousemove={handleMousemove}
+    on:mousedown={handleMousedown}>
+    bind:currentTime={time}
+    bind:duration bind:paused
+    <track kind="captions" />
+  </video>
 
-<button on:click={selectAllTrue}>Select All</button>
+  <div class="controls" style="opacity: {duration && showControls ? 1 : 0}">
+    <progress value={time / duration || 0} />
 
-{#each todos as todo}
-  <div class:done={todo.done}>
-    <input type="checkbox" bind:checked={todo.done} />
-
-    <input placeholder="What needs to be done?" bind:value={todo.text} />
+    <div class="info">
+      <span class="time">{format(time)}</span>
+      <span>click anywhere to {paused ? 'play' : 'pause'} / drag to seek</span>
+      <span class="time">{format(duration)}</span>
+    </div>
   </div>
-{/each}
-
-<p>{remaining} remaining</p>
-
-<button on:click={add}> Add new </button>
-
-<button on:click={clear}> Clear completed </button>
+</div>
 
 <style>
-  .done {
-    opacity: 0.4;
+  div {
+    position: relative;
+  }
+
+  .controls {
+    position: absolute;
+    top: 0;
+    width: 100%;
+    transition: opacity 1s;
+  }
+
+  .info {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  span {
+    padding: 0.2em 0.5em;
+    color: white;
+    text-shadow: 0 0 8px black;
+    font-size: 1.4em;
+    opacity: 0.7;
+  }
+
+  .time {
+    width: 3em;
+  }
+
+  .time:last-child {
+    text-align: right;
+  }
+
+  progress {
+    display: block;
+    width: 100%;
+    height: 10px;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  progress::-webkit-progress-bar {
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+
+  progress::-webkit-progress-value {
+    background-color: rgba(255, 255, 255, 0.6);
+  }
+
+  video {
+    width: 100%;
   }
 </style>
