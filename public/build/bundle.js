@@ -56,14 +56,8 @@ var app = (function () {
         else if (node.getAttribute(attribute) !== value)
             node.setAttribute(attribute, value);
     }
-    function to_number(value) {
-        return value === '' ? null : +value;
-    }
     function children(element) {
         return Array.from(element.childNodes);
-    }
-    function set_input_value(input, value) {
-        input.value = value == null ? '' : value;
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
@@ -303,12 +297,9 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
-    function set_data_dev(text, data) {
-        data = '' + data;
-        if (text.wholeText === data)
-            return;
-        dispatch_dev('SvelteDOMSetData', { node: text, data });
-        text.data = data;
+    function prop_dev(node, property, value) {
+        node[property] = value;
+        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -341,134 +332,148 @@ var app = (function () {
 
     const file = "src\\App.svelte";
 
-    function create_fragment(ctx) {
-    	let label0;
-    	let input0;
-    	let t0;
-    	let input1;
-    	let t1;
-    	let label1;
-    	let input2;
-    	let t2;
-    	let input3;
-    	let t3;
+    // (12:0) {:else}
+    function create_else_block(ctx) {
     	let p;
-    	let t4;
-    	let t5;
-    	let t6;
-    	let t7;
-    	let t8_value = /*a*/ ctx[0] + /*b*/ ctx[1] + "";
-    	let t8;
-    	let mounted;
-    	let dispose;
 
     	const block = {
     		c: function create() {
-    			label0 = element("label");
-    			input0 = element("input");
-    			t0 = space();
-    			input1 = element("input");
-    			t1 = space();
-    			label1 = element("label");
-    			input2 = element("input");
-    			t2 = space();
-    			input3 = element("input");
-    			t3 = space();
     			p = element("p");
-    			t4 = text(/*a*/ ctx[0]);
-    			t5 = text(" + ");
-    			t6 = text(/*b*/ ctx[1]);
-    			t7 = text(" = ");
-    			t8 = text(t8_value);
-    			attr_dev(input0, "type", "number");
-    			attr_dev(input0, "min", "0");
-    			attr_dev(input0, "max", "10");
-    			add_location(input0, file, 6, 2, 56);
-    			attr_dev(input1, "type", "range");
-    			attr_dev(input1, "min", "0");
-    			attr_dev(input1, "max", "10");
-    			add_location(input1, file, 7, 2, 114);
-    			add_location(label0, file, 5, 0, 46);
-    			attr_dev(input2, "type", "number");
-    			attr_dev(input2, "min", "0");
-    			attr_dev(input2, "max", "10");
-    			add_location(input2, file, 11, 2, 189);
-    			attr_dev(input3, "type", "range");
-    			attr_dev(input3, "min", "0");
-    			attr_dev(input3, "max", "10");
-    			add_location(input3, file, 12, 2, 247);
-    			add_location(label1, file, 10, 0, 179);
-    			add_location(p, file, 15, 0, 312);
+    			p.textContent = "You must opt in to continue. If you're not paying, you're the product.";
+    			add_location(p, file, 12, 2, 237);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_else_block.name,
+    		type: "else",
+    		source: "(12:0) {:else}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (10:0) {#if yes}
+    function create_if_block(ctx) {
+    	let p;
+
+    	const block = {
+    		c: function create() {
+    			p = element("p");
+    			p.textContent = "Thank you. We will bombard your inbox and sell your personal details.";
+    			add_location(p, file, 10, 2, 150);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block.name,
+    		type: "if",
+    		source: "(10:0) {#if yes}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    function create_fragment(ctx) {
+    	let label;
+    	let input;
+    	let t0;
+    	let t1;
+    	let t2;
+    	let button;
+    	let t3;
+    	let button_disabled_value;
+    	let mounted;
+    	let dispose;
+
+    	function select_block_type(ctx, dirty) {
+    		if (/*yes*/ ctx[0]) return create_if_block;
+    		return create_else_block;
+    	}
+
+    	let current_block_type = select_block_type(ctx);
+    	let if_block = current_block_type(ctx);
+
+    	const block = {
+    		c: function create() {
+    			label = element("label");
+    			input = element("input");
+    			t0 = text("\n  Yes! Send me regular email spam");
+    			t1 = space();
+    			if_block.c();
+    			t2 = space();
+    			button = element("button");
+    			t3 = text("Subscribe");
+    			attr_dev(input, "type", "checkbox");
+    			add_location(input, file, 5, 2, 49);
+    			add_location(label, file, 4, 0, 39);
+    			button.disabled = button_disabled_value = !/*yes*/ ctx[0];
+    			add_location(button, file, 15, 0, 322);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, label0, anchor);
-    			append_dev(label0, input0);
-    			set_input_value(input0, /*a*/ ctx[0]);
-    			append_dev(label0, t0);
-    			append_dev(label0, input1);
-    			set_input_value(input1, /*a*/ ctx[0]);
+    			insert_dev(target, label, anchor);
+    			append_dev(label, input);
+    			input.checked = /*yes*/ ctx[0];
+    			append_dev(label, t0);
     			insert_dev(target, t1, anchor);
-    			insert_dev(target, label1, anchor);
-    			append_dev(label1, input2);
-    			set_input_value(input2, /*b*/ ctx[1]);
-    			append_dev(label1, t2);
-    			append_dev(label1, input3);
-    			set_input_value(input3, /*b*/ ctx[1]);
-    			insert_dev(target, t3, anchor);
-    			insert_dev(target, p, anchor);
-    			append_dev(p, t4);
-    			append_dev(p, t5);
-    			append_dev(p, t6);
-    			append_dev(p, t7);
-    			append_dev(p, t8);
+    			if_block.m(target, anchor);
+    			insert_dev(target, t2, anchor);
+    			insert_dev(target, button, anchor);
+    			append_dev(button, t3);
 
     			if (!mounted) {
-    				dispose = [
-    					listen_dev(input0, "input", /*input0_input_handler*/ ctx[2]),
-    					listen_dev(input1, "change", /*input1_change_input_handler*/ ctx[3]),
-    					listen_dev(input1, "input", /*input1_change_input_handler*/ ctx[3]),
-    					listen_dev(input2, "input", /*input2_input_handler*/ ctx[4]),
-    					listen_dev(input3, "change", /*input3_change_input_handler*/ ctx[5]),
-    					listen_dev(input3, "input", /*input3_change_input_handler*/ ctx[5])
-    				];
-
+    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[1]);
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*a*/ 1 && to_number(input0.value) !== /*a*/ ctx[0]) {
-    				set_input_value(input0, /*a*/ ctx[0]);
+    			if (dirty & /*yes*/ 1) {
+    				input.checked = /*yes*/ ctx[0];
     			}
 
-    			if (dirty & /*a*/ 1) {
-    				set_input_value(input1, /*a*/ ctx[0]);
+    			if (current_block_type !== (current_block_type = select_block_type(ctx))) {
+    				if_block.d(1);
+    				if_block = current_block_type(ctx);
+
+    				if (if_block) {
+    					if_block.c();
+    					if_block.m(t2.parentNode, t2);
+    				}
     			}
 
-    			if (dirty & /*b*/ 2 && to_number(input2.value) !== /*b*/ ctx[1]) {
-    				set_input_value(input2, /*b*/ ctx[1]);
+    			if (dirty & /*yes*/ 1 && button_disabled_value !== (button_disabled_value = !/*yes*/ ctx[0])) {
+    				prop_dev(button, "disabled", button_disabled_value);
     			}
-
-    			if (dirty & /*b*/ 2) {
-    				set_input_value(input3, /*b*/ ctx[1]);
-    			}
-
-    			if (dirty & /*a*/ 1) set_data_dev(t4, /*a*/ ctx[0]);
-    			if (dirty & /*b*/ 2) set_data_dev(t6, /*b*/ ctx[1]);
-    			if (dirty & /*a, b*/ 3 && t8_value !== (t8_value = /*a*/ ctx[0] + /*b*/ ctx[1] + "")) set_data_dev(t8, t8_value);
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(label0);
+    			if (detaching) detach_dev(label);
     			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(label1);
-    			if (detaching) detach_dev(t3);
-    			if (detaching) detach_dev(p);
+    			if_block.d(detaching);
+    			if (detaching) detach_dev(t2);
+    			if (detaching) detach_dev(button);
     			mounted = false;
-    			run_all(dispose);
+    			dispose();
     		}
     	};
 
@@ -486,53 +491,29 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let a = 1;
-    	let b = 2;
+    	let yes = false;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function input0_input_handler() {
-    		a = to_number(this.value);
-    		$$invalidate(0, a);
+    	function input_change_handler() {
+    		yes = this.checked;
+    		$$invalidate(0, yes);
     	}
 
-    	function input1_change_input_handler() {
-    		a = to_number(this.value);
-    		$$invalidate(0, a);
-    	}
-
-    	function input2_input_handler() {
-    		b = to_number(this.value);
-    		$$invalidate(1, b);
-    	}
-
-    	function input3_change_input_handler() {
-    		b = to_number(this.value);
-    		$$invalidate(1, b);
-    	}
-
-    	$$self.$capture_state = () => ({ a, b });
+    	$$self.$capture_state = () => ({ yes });
 
     	$$self.$inject_state = $$props => {
-    		if ("a" in $$props) $$invalidate(0, a = $$props.a);
-    		if ("b" in $$props) $$invalidate(1, b = $$props.b);
+    		if ("yes" in $$props) $$invalidate(0, yes = $$props.yes);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [
-    		a,
-    		b,
-    		input0_input_handler,
-    		input1_change_input_handler,
-    		input2_input_handler,
-    		input3_change_input_handler
-    	];
+    	return [yes, input_change_handler];
     }
 
     class App extends SvelteComponentDev {
