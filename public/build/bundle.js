@@ -37,6 +37,12 @@ var app = (function () {
     function detach(node) {
         node.parentNode.removeChild(node);
     }
+    function destroy_each(iterations, detaching) {
+        for (let i = 0; i < iterations.length; i += 1) {
+            if (iterations[i])
+                iterations[i].d(detaching);
+        }
+    }
     function element(name) {
         return document.createElement(name);
     }
@@ -45,6 +51,9 @@ var app = (function () {
     }
     function space() {
         return text(' ');
+    }
+    function empty() {
+        return text('');
     }
     function listen(node, event, handler, options) {
         node.addEventListener(event, handler, options);
@@ -55,6 +64,17 @@ var app = (function () {
             node.removeAttribute(attribute);
         else if (node.getAttribute(attribute) !== value)
             node.setAttribute(attribute, value);
+    }
+    function get_binding_group_value(group, __value, checked) {
+        const value = new Set();
+        for (let i = 0; i < group.length; i += 1) {
+            if (group[i].checked)
+                value.add(group[i].__value);
+        }
+        if (!checked) {
+            value.delete(__value);
+        }
+        return Array.from(value);
     }
     function children(element) {
         return Array.from(element.childNodes);
@@ -297,9 +317,21 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
-    function prop_dev(node, property, value) {
-        node[property] = value;
-        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
+    }
+    function validate_each_argument(arg) {
+        if (typeof arg !== 'string' && !(arg && typeof arg === 'object' && 'length' in arg)) {
+            let msg = '{#each} only iterates over array-like objects.';
+            if (typeof Symbol === 'function' && arg && Symbol.iterator in arg) {
+                msg += ' You can use a spread to convert this iterable into an array.';
+            }
+            throw new Error(msg);
+        }
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -332,18 +364,107 @@ var app = (function () {
 
     const file = "src\\App.svelte";
 
-    // (12:0) {:else}
+    function get_each_context(ctx, list, i) {
+    	const child_ctx = ctx.slice();
+    	child_ctx[8] = list[i];
+    	return child_ctx;
+    }
+
+    // (32:0) {#each menu as flavor}
+    function create_each_block(ctx) {
+    	let label;
+    	let input;
+    	let t0;
+    	let t1_value = /*flavor*/ ctx[8] + "";
+    	let t1;
+    	let mounted;
+    	let dispose;
+
+    	const block = {
+    		c: function create() {
+    			label = element("label");
+    			input = element("input");
+    			t0 = space();
+    			t1 = text(t1_value);
+    			attr_dev(input, "type", "checkbox");
+    			input.__value = ctx[8];
+    			input.value = input.__value;
+    			/*$$binding_groups*/ ctx[4][0].push(input);
+    			add_location(input, file, 33, 4, 642);
+    			add_location(label, file, 32, 2, 630);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, label, anchor);
+    			append_dev(label, input);
+    			input.checked = ~/*flavours*/ ctx[1].indexOf(input.__value);
+    			append_dev(label, t0);
+    			append_dev(label, t1);
+
+    			if (!mounted) {
+    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[7]);
+    				mounted = true;
+    			}
+    		},
+    		p: function update(ctx, dirty) {
+    			if (dirty & /*flavours*/ 2) {
+    				input.checked = ~/*flavours*/ ctx[1].indexOf(input.__value);
+    			}
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(label);
+    			/*$$binding_groups*/ ctx[4][0].splice(/*$$binding_groups*/ ctx[4][0].indexOf(input), 1);
+    			mounted = false;
+    			dispose();
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_each_block.name,
+    		type: "each",
+    		source: "(32:0) {#each menu as flavor}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (43:0) {:else}
     function create_else_block(ctx) {
     	let p;
+    	let t0;
+    	let t1;
+    	let t2;
+    	let t3_value = (/*scoops*/ ctx[0] === 1 ? "scoop" : "scoops") + "";
+    	let t3;
+    	let t4;
+    	let t5_value = join(/*flavours*/ ctx[1]) + "";
+    	let t5;
 
     	const block = {
     		c: function create() {
     			p = element("p");
-    			p.textContent = "You must opt in to continue. If you're not paying, you're the product.";
-    			add_location(p, file, 12, 2, 237);
+    			t0 = text("You ordered ");
+    			t1 = text(/*scoops*/ ctx[0]);
+    			t2 = space();
+    			t3 = text(t3_value);
+    			t4 = text("\n    of ");
+    			t5 = text(t5_value);
+    			add_location(p, file, 43, 2, 904);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
+    			append_dev(p, t0);
+    			append_dev(p, t1);
+    			append_dev(p, t2);
+    			append_dev(p, t3);
+    			append_dev(p, t4);
+    			append_dev(p, t5);
+    		},
+    		p: function update(ctx, dirty) {
+    			if (dirty & /*scoops*/ 1) set_data_dev(t1, /*scoops*/ ctx[0]);
+    			if (dirty & /*scoops*/ 1 && t3_value !== (t3_value = (/*scoops*/ ctx[0] === 1 ? "scoop" : "scoops") + "")) set_data_dev(t3, t3_value);
+    			if (dirty & /*flavours*/ 2 && t5_value !== (t5_value = join(/*flavours*/ ctx[1]) + "")) set_data_dev(t5, t5_value);
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(p);
@@ -354,26 +475,57 @@ var app = (function () {
     		block,
     		id: create_else_block.name,
     		type: "else",
-    		source: "(12:0) {:else}",
+    		source: "(43:0) {:else}",
     		ctx
     	});
 
     	return block;
     }
 
-    // (10:0) {#if yes}
+    // (41:35) 
+    function create_if_block_1(ctx) {
+    	let p;
+
+    	const block = {
+    		c: function create() {
+    			p = element("p");
+    			p.textContent = "Can't order more flavours than scoops!";
+    			add_location(p, file, 41, 2, 848);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    		},
+    		p: noop,
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block_1.name,
+    		type: "if",
+    		source: "(41:35) ",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    // (39:0) {#if flavours.length === 0}
     function create_if_block(ctx) {
     	let p;
 
     	const block = {
     		c: function create() {
     			p = element("p");
-    			p.textContent = "Thank you. We will bombard your inbox and sell your personal details.";
-    			add_location(p, file, 10, 2, 150);
+    			p.textContent = "Please select at least one flavour";
+    			add_location(p, file, 39, 2, 768);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
     		},
+    		p: noop,
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(p);
     		}
@@ -383,7 +535,7 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(10:0) {#if yes}",
+    		source: "(39:0) {#if flavours.length === 0}",
     		ctx
     	});
 
@@ -391,19 +543,37 @@ var app = (function () {
     }
 
     function create_fragment(ctx) {
-    	let label;
-    	let input;
-    	let t0;
+    	let h20;
     	let t1;
+    	let label0;
+    	let input0;
     	let t2;
-    	let button;
     	let t3;
-    	let button_disabled_value;
+    	let label1;
+    	let input1;
+    	let t4;
+    	let t5;
+    	let label2;
+    	let input2;
+    	let t6;
+    	let t7;
+    	let h21;
+    	let t9;
+    	let t10;
+    	let if_block_anchor;
     	let mounted;
     	let dispose;
+    	let each_value = /*menu*/ ctx[2];
+    	validate_each_argument(each_value);
+    	let each_blocks = [];
+
+    	for (let i = 0; i < each_value.length; i += 1) {
+    		each_blocks[i] = create_each_block(get_each_context(ctx, each_value, i));
+    	}
 
     	function select_block_type(ctx, dirty) {
-    		if (/*yes*/ ctx[0]) return create_if_block;
+    		if (/*flavours*/ ctx[1].length === 0) return create_if_block;
+    		if (/*flavours*/ ctx[1].length > /*scoops*/ ctx[0]) return create_if_block_1;
     		return create_else_block;
     	}
 
@@ -412,68 +582,166 @@ var app = (function () {
 
     	const block = {
     		c: function create() {
-    			label = element("label");
-    			input = element("input");
-    			t0 = text("\n  Yes! Send me regular email spam");
+    			h20 = element("h2");
+    			h20.textContent = "Size";
     			t1 = space();
+    			label0 = element("label");
+    			input0 = element("input");
+    			t2 = text("\n  One scoop");
+    			t3 = space();
+    			label1 = element("label");
+    			input1 = element("input");
+    			t4 = text("\n  Two scoops");
+    			t5 = space();
+    			label2 = element("label");
+    			input2 = element("input");
+    			t6 = text("\n  Three scoops");
+    			t7 = space();
+    			h21 = element("h2");
+    			h21.textContent = "Flavours";
+    			t9 = space();
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].c();
+    			}
+
+    			t10 = space();
     			if_block.c();
-    			t2 = space();
-    			button = element("button");
-    			t3 = text("Subscribe");
-    			attr_dev(input, "type", "checkbox");
-    			add_location(input, file, 5, 2, 49);
-    			add_location(label, file, 4, 0, 39);
-    			button.disabled = button_disabled_value = !/*yes*/ ctx[0];
-    			add_location(button, file, 15, 0, 322);
+    			if_block_anchor = empty();
+    			add_location(h20, file, 13, 0, 313);
+    			attr_dev(input0, "type", "radio");
+    			input0.__value = 1;
+    			input0.value = input0.__value;
+    			/*$$binding_groups*/ ctx[4][1].push(input0);
+    			add_location(input0, file, 16, 2, 338);
+    			add_location(label0, file, 15, 0, 328);
+    			attr_dev(input1, "type", "radio");
+    			input1.__value = 2;
+    			input1.value = input1.__value;
+    			/*$$binding_groups*/ ctx[4][1].push(input1);
+    			add_location(input1, file, 21, 2, 423);
+    			add_location(label1, file, 20, 0, 413);
+    			attr_dev(input2, "type", "radio");
+    			input2.__value = 3;
+    			input2.value = input2.__value;
+    			/*$$binding_groups*/ ctx[4][1].push(input2);
+    			add_location(input2, file, 26, 2, 509);
+    			add_location(label2, file, 25, 0, 499);
+    			add_location(h21, file, 30, 0, 587);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, label, anchor);
-    			append_dev(label, input);
-    			input.checked = /*yes*/ ctx[0];
-    			append_dev(label, t0);
+    			insert_dev(target, h20, anchor);
     			insert_dev(target, t1, anchor);
+    			insert_dev(target, label0, anchor);
+    			append_dev(label0, input0);
+    			input0.checked = input0.__value === /*scoops*/ ctx[0];
+    			append_dev(label0, t2);
+    			insert_dev(target, t3, anchor);
+    			insert_dev(target, label1, anchor);
+    			append_dev(label1, input1);
+    			input1.checked = input1.__value === /*scoops*/ ctx[0];
+    			append_dev(label1, t4);
+    			insert_dev(target, t5, anchor);
+    			insert_dev(target, label2, anchor);
+    			append_dev(label2, input2);
+    			input2.checked = input2.__value === /*scoops*/ ctx[0];
+    			append_dev(label2, t6);
+    			insert_dev(target, t7, anchor);
+    			insert_dev(target, h21, anchor);
+    			insert_dev(target, t9, anchor);
+
+    			for (let i = 0; i < each_blocks.length; i += 1) {
+    				each_blocks[i].m(target, anchor);
+    			}
+
+    			insert_dev(target, t10, anchor);
     			if_block.m(target, anchor);
-    			insert_dev(target, t2, anchor);
-    			insert_dev(target, button, anchor);
-    			append_dev(button, t3);
+    			insert_dev(target, if_block_anchor, anchor);
 
     			if (!mounted) {
-    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[1]);
+    				dispose = [
+    					listen_dev(input0, "change", /*input0_change_handler*/ ctx[3]),
+    					listen_dev(input1, "change", /*input1_change_handler*/ ctx[5]),
+    					listen_dev(input2, "change", /*input2_change_handler*/ ctx[6])
+    				];
+
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*yes*/ 1) {
-    				input.checked = /*yes*/ ctx[0];
+    			if (dirty & /*scoops*/ 1) {
+    				input0.checked = input0.__value === /*scoops*/ ctx[0];
     			}
 
-    			if (current_block_type !== (current_block_type = select_block_type(ctx))) {
+    			if (dirty & /*scoops*/ 1) {
+    				input1.checked = input1.__value === /*scoops*/ ctx[0];
+    			}
+
+    			if (dirty & /*scoops*/ 1) {
+    				input2.checked = input2.__value === /*scoops*/ ctx[0];
+    			}
+
+    			if (dirty & /*menu, flavours*/ 6) {
+    				each_value = /*menu*/ ctx[2];
+    				validate_each_argument(each_value);
+    				let i;
+
+    				for (i = 0; i < each_value.length; i += 1) {
+    					const child_ctx = get_each_context(ctx, each_value, i);
+
+    					if (each_blocks[i]) {
+    						each_blocks[i].p(child_ctx, dirty);
+    					} else {
+    						each_blocks[i] = create_each_block(child_ctx);
+    						each_blocks[i].c();
+    						each_blocks[i].m(t10.parentNode, t10);
+    					}
+    				}
+
+    				for (; i < each_blocks.length; i += 1) {
+    					each_blocks[i].d(1);
+    				}
+
+    				each_blocks.length = each_value.length;
+    			}
+
+    			if (current_block_type === (current_block_type = select_block_type(ctx)) && if_block) {
+    				if_block.p(ctx, dirty);
+    			} else {
     				if_block.d(1);
     				if_block = current_block_type(ctx);
 
     				if (if_block) {
     					if_block.c();
-    					if_block.m(t2.parentNode, t2);
+    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
     				}
-    			}
-
-    			if (dirty & /*yes*/ 1 && button_disabled_value !== (button_disabled_value = !/*yes*/ ctx[0])) {
-    				prop_dev(button, "disabled", button_disabled_value);
     			}
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(label);
+    			if (detaching) detach_dev(h20);
     			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(label0);
+    			/*$$binding_groups*/ ctx[4][1].splice(/*$$binding_groups*/ ctx[4][1].indexOf(input0), 1);
+    			if (detaching) detach_dev(t3);
+    			if (detaching) detach_dev(label1);
+    			/*$$binding_groups*/ ctx[4][1].splice(/*$$binding_groups*/ ctx[4][1].indexOf(input1), 1);
+    			if (detaching) detach_dev(t5);
+    			if (detaching) detach_dev(label2);
+    			/*$$binding_groups*/ ctx[4][1].splice(/*$$binding_groups*/ ctx[4][1].indexOf(input2), 1);
+    			if (detaching) detach_dev(t7);
+    			if (detaching) detach_dev(h21);
+    			if (detaching) detach_dev(t9);
+    			destroy_each(each_blocks, detaching);
+    			if (detaching) detach_dev(t10);
     			if_block.d(detaching);
-    			if (detaching) detach_dev(t2);
-    			if (detaching) detach_dev(button);
+    			if (detaching) detach_dev(if_block_anchor);
     			mounted = false;
-    			dispose();
+    			run_all(dispose);
     		}
     	};
 
@@ -488,32 +756,66 @@ var app = (function () {
     	return block;
     }
 
+    function join(flavours) {
+    	if (flavours.length === 1) return flavours[0];
+    	return `${flavours.slice(0, -1).join(", ")} and ${flavours[flavours.length - 1]}`;
+    }
+
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let yes = false;
+    	let scoops = 1;
+    	let flavours = [];
+    	const menu = ["Cookies and Storages", "Linux Mint", "Raspberry Pi"];
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function input_change_handler() {
-    		yes = this.checked;
-    		$$invalidate(0, yes);
+    	const $$binding_groups = [[], []];
+
+    	function input0_change_handler() {
+    		scoops = this.__value;
+    		$$invalidate(0, scoops);
     	}
 
-    	$$self.$capture_state = () => ({ yes });
+    	function input1_change_handler() {
+    		scoops = this.__value;
+    		$$invalidate(0, scoops);
+    	}
+
+    	function input2_change_handler() {
+    		scoops = this.__value;
+    		$$invalidate(0, scoops);
+    	}
+
+    	function input_change_handler() {
+    		flavours = get_binding_group_value($$binding_groups[0], this.__value, this.checked);
+    		$$invalidate(1, flavours);
+    	}
+
+    	$$self.$capture_state = () => ({ scoops, flavours, menu, join });
 
     	$$self.$inject_state = $$props => {
-    		if ("yes" in $$props) $$invalidate(0, yes = $$props.yes);
+    		if ("scoops" in $$props) $$invalidate(0, scoops = $$props.scoops);
+    		if ("flavours" in $$props) $$invalidate(1, flavours = $$props.flavours);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [yes, input_change_handler];
+    	return [
+    		scoops,
+    		flavours,
+    		menu,
+    		input0_change_handler,
+    		$$binding_groups,
+    		input1_change_handler,
+    		input2_change_handler,
+    		input_change_handler
+    	];
     }
 
     class App extends SvelteComponentDev {
