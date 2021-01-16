@@ -27,6 +27,21 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
+    function validate_store(store, name) {
+        if (store != null && typeof store.subscribe !== 'function') {
+            throw new Error(`'${name}' is not a store with a 'subscribe' method`);
+        }
+    }
+    function subscribe(store, ...callbacks) {
+        if (store == null) {
+            return noop;
+        }
+        const unsub = store.subscribe(...callbacks);
+        return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
+    }
+    function component_subscribe(component, store, callback) {
+        component.$$.on_destroy.push(subscribe(store, callback));
+    }
 
     function append(target, node) {
         target.appendChild(node);
@@ -646,14 +661,14 @@ var app = (function () {
     	const block = {
     		c: function create() {
     			h1 = element("h1");
-    			t0 = text(/*count_value*/ ctx[0]);
+    			t0 = text(/*$count*/ ctx[0]);
     			t1 = space();
     			create_component(incrementer.$$.fragment);
     			t2 = space();
     			create_component(decrementer.$$.fragment);
     			t3 = space();
     			create_component(resetter.$$.fragment);
-    			add_location(h1, file$3, 13, 0, 304);
+    			add_location(h1, file$3, 16, 0, 387);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -670,7 +685,7 @@ var app = (function () {
     			current = true;
     		},
     		p: function update(ctx, [dirty]) {
-    			if (!current || dirty & /*count_value*/ 1) set_data_dev(t0, /*count_value*/ ctx[0]);
+    			if (!current || dirty & /*$count*/ 1) set_data_dev(t0, /*$count*/ ctx[0]);
     		},
     		i: function intro(local) {
     			if (current) return;
@@ -708,14 +723,11 @@ var app = (function () {
     }
 
     function instance$3($$self, $$props, $$invalidate) {
+    	let $count;
+    	validate_store(count, "count");
+    	component_subscribe($$self, count, $$value => $$invalidate(0, $count = $$value));
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let count_value;
-
-    	const unsubscribe = count.subscribe(value => {
-    		$$invalidate(0, count_value = value);
-    	});
-
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
@@ -727,19 +739,10 @@ var app = (function () {
     		Incrementer,
     		Decrementer,
     		Resetter,
-    		count_value,
-    		unsubscribe
+    		$count
     	});
 
-    	$$self.$inject_state = $$props => {
-    		if ("count_value" in $$props) $$invalidate(0, count_value = $$props.count_value);
-    	};
-
-    	if ($$props && "$$inject" in $$props) {
-    		$$self.$inject_state($$props.$$inject);
-    	}
-
-    	return [count_value];
+    	return [$count];
     }
 
     class App extends SvelteComponentDev {
