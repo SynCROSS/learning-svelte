@@ -4,6 +4,13 @@ var app = (function () {
     'use strict';
 
     function noop() { }
+    const identity = x => x;
+    function assign(tar, src) {
+        // @ts-ignore
+        for (const k in src)
+            tar[k] = src[k];
+        return tar;
+    }
     function add_location(element, file, line, column, char) {
         element.__svelte_meta = {
             loc: { file, line, column, char }
@@ -43,6 +50,41 @@ var app = (function () {
         component.$$.on_destroy.push(subscribe(store, callback));
     }
 
+    const is_client = typeof window !== 'undefined';
+    let now = is_client
+        ? () => window.performance.now()
+        : () => Date.now();
+    let raf = is_client ? cb => requestAnimationFrame(cb) : noop;
+
+    const tasks = new Set();
+    function run_tasks(now) {
+        tasks.forEach(task => {
+            if (!task.c(now)) {
+                tasks.delete(task);
+                task.f();
+            }
+        });
+        if (tasks.size !== 0)
+            raf(run_tasks);
+    }
+    /**
+     * Creates a new task that runs on each raf frame
+     * until it returns a falsy value or is aborted
+     */
+    function loop(callback) {
+        let task;
+        if (tasks.size === 0)
+            raf(run_tasks);
+        return {
+            promise: new Promise(fulfill => {
+                tasks.add(task = { c: callback, f: fulfill });
+            }),
+            abort() {
+                tasks.delete(task);
+            }
+        };
+    }
+
     function append(target, node) {
         target.appendChild(node);
     }
@@ -73,9 +115,6 @@ var app = (function () {
     }
     function children(element) {
         return Array.from(element.childNodes);
-    }
-    function set_input_value(input, value) {
-        input.value = value == null ? '' : value;
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
@@ -315,12 +354,9 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
-    function set_data_dev(text, data) {
-        data = '' + data;
-        if (text.wholeText === data)
-            return;
-        dispatch_dev('SvelteDOMSetData', { node: text, data });
-        text.data = data;
+    function prop_dev(node, property, value) {
+        node[property] = value;
+        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -350,16 +386,6 @@ var app = (function () {
     }
 
     const subscriber_queue = [];
-    /**
-     * Creates a `Readable` store that allows reading by subscription.
-     * @param value initial value
-     * @param {StartStopNotifier}start start and stop notifications for subscriptions
-     */
-    function readable(value, start) {
-        return {
-            subscribe: writable(value, start).subscribe
-        };
-    }
     /**
      * Create a `Writable` store that allows both updating and reading by subscription.
      * @param {*=}value initial value
@@ -410,119 +436,265 @@ var app = (function () {
         }
         return { set, update, subscribe };
     }
-    function derived(stores, fn, initial_value) {
-        const single = !Array.isArray(stores);
-        const stores_array = single
-            ? [stores]
-            : stores;
-        const auto = fn.length < 2;
-        return readable(initial_value, (set) => {
-            let inited = false;
-            const values = [];
-            let pending = 0;
-            let cleanup = noop;
-            const sync = () => {
-                if (pending) {
-                    return;
-                }
-                cleanup();
-                const result = fn(single ? values[0] : values, set);
-                if (auto) {
-                    set(result);
-                }
-                else {
-                    cleanup = is_function(result) ? result : noop;
-                }
-            };
-            const unsubscribers = stores_array.map((store, i) => subscribe(store, (value) => {
-                values[i] = value;
-                pending &= ~(1 << i);
-                if (inited) {
-                    sync();
-                }
-            }, () => {
-                pending |= (1 << i);
-            }));
-            inited = true;
-            sync();
-            return function stop() {
-                run_all(unsubscribers);
-                cleanup();
-            };
-        });
+
+    function cubicOut(t) {
+        const f = t - 1.0;
+        return f * f * f + 1.0;
     }
 
-    const name = writable('world');
+    function is_date(obj) {
+        return Object.prototype.toString.call(obj) === '[object Date]';
+    }
 
-    const greeting = derived(name, $name => `Hello ${$name}`);
+    function get_interpolator(a, b) {
+        if (a === b || a !== a)
+            return () => a;
+        const type = typeof a;
+        if (type !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
+            throw new Error('Cannot interpolate values of different type');
+        }
+        if (Array.isArray(a)) {
+            const arr = b.map((bi, i) => {
+                return get_interpolator(a[i], bi);
+            });
+            return t => arr.map(fn => fn(t));
+        }
+        if (type === 'object') {
+            if (!a || !b)
+                throw new Error('Object cannot be null');
+            if (is_date(a) && is_date(b)) {
+                a = a.getTime();
+                b = b.getTime();
+                const delta = b - a;
+                return t => new Date(a + t * delta);
+            }
+            const keys = Object.keys(b);
+            const interpolators = {};
+            keys.forEach(key => {
+                interpolators[key] = get_interpolator(a[key], b[key]);
+            });
+            return t => {
+                const result = {};
+                keys.forEach(key => {
+                    result[key] = interpolators[key](t);
+                });
+                return result;
+            };
+        }
+        if (type === 'number') {
+            const delta = b - a;
+            return t => a + t * delta;
+        }
+        throw new Error(`Cannot interpolate ${type} values`);
+    }
+    function tweened(value, defaults = {}) {
+        const store = writable(value);
+        let task;
+        let target_value = value;
+        function set(new_value, opts) {
+            if (value == null) {
+                store.set(value = new_value);
+                return Promise.resolve();
+            }
+            target_value = new_value;
+            let previous_task = task;
+            let started = false;
+            let { delay = 0, duration = 400, easing = identity, interpolate = get_interpolator } = assign(assign({}, defaults), opts);
+            if (duration === 0) {
+                if (previous_task) {
+                    previous_task.abort();
+                    previous_task = null;
+                }
+                store.set(value = target_value);
+                return Promise.resolve();
+            }
+            const start = now() + delay;
+            let fn;
+            task = loop(now => {
+                if (now < start)
+                    return true;
+                if (!started) {
+                    fn = interpolate(value, new_value);
+                    if (typeof duration === 'function')
+                        duration = duration(value, new_value);
+                    started = true;
+                }
+                if (previous_task) {
+                    previous_task.abort();
+                    previous_task = null;
+                }
+                const elapsed = now - start;
+                if (elapsed > duration) {
+                    store.set(value = new_value);
+                    return false;
+                }
+                // @ts-ignore
+                store.set(value = fn(easing(elapsed / duration)));
+                return true;
+            });
+            return task.promise;
+        }
+        return {
+            set,
+            update: (fn, opts) => set(fn(target_value, value), opts),
+            subscribe: store.subscribe
+        };
+    }
 
     /* src\App.svelte generated by Svelte v3.31.2 */
+
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let h1;
-    	let t0;
-    	let t1;
-    	let input;
-    	let t2;
     	let div;
-    	let button;
+    	let t0;
+    	let progress_1;
+    	let t1;
+    	let button0;
+    	let t3;
+    	let button1;
+    	let t5;
+    	let button2;
+    	let t7;
+    	let button3;
+    	let t9;
+    	let button4;
+    	let t11;
+    	let br;
+    	let t12;
+    	let ul;
+    	let li0;
+    	let t14;
+    	let li1;
+    	let t16;
+    	let li2;
+    	let t18;
+    	let li3;
+    	let t20;
     	let mounted;
     	let dispose;
 
     	const block = {
     		c: function create() {
-    			h1 = element("h1");
-    			t0 = text(/*$greeting*/ ctx[0]);
-    			t1 = space();
-    			input = element("input");
-    			t2 = space();
     			div = element("div");
-    			button = element("button");
-    			button.textContent = "Add exclamation mark!";
-    			add_location(h1, file, 4, 0, 68);
-    			add_location(input, file, 5, 0, 89);
-    			add_location(button, file, 7, 2, 146);
-    			attr_dev(div, "class", "button_wrap");
-    			add_location(div, file, 6, 0, 118);
+    			t0 = space();
+    			progress_1 = element("progress");
+    			t1 = space();
+    			button0 = element("button");
+    			button0.textContent = "0%";
+    			t3 = space();
+    			button1 = element("button");
+    			button1.textContent = "25%";
+    			t5 = space();
+    			button2 = element("button");
+    			button2.textContent = "50%";
+    			t7 = space();
+    			button3 = element("button");
+    			button3.textContent = "75%";
+    			t9 = space();
+    			button4 = element("button");
+    			button4.textContent = "100%";
+    			t11 = space();
+    			br = element("br");
+    			t12 = text("\nThe full set of options available to tweened:\n");
+    			ul = element("ul");
+    			li0 = element("li");
+    			li0.textContent = "delay — milliseconds before the tween starts";
+    			t14 = space();
+    			li1 = element("li");
+    			li1.textContent = "duration — either the duration of the tween in milliseconds, or a (from, to)\n    => milliseconds function allowing you to (e.g.) specify longer tweens for\n    larger changes in value";
+    			t16 = space();
+    			li2 = element("li");
+    			li2.textContent = "easing — a p => t function";
+    			t18 = space();
+    			li3 = element("li");
+    			li3.textContent = "interpolate — a custom (from, to) => t => value function for\n    interpolating between arbitrary values. By default, Svelte will interpolate\n    between numbers, dates, and identically-shaped arrays and objects (as long\n    as they only contain numbers and dates or other valid arrays and objects).\n    If you want to interpolate (for example) colour strings or transformation\n    matrices, supply a custom interpolator";
+    			t20 = text("\n\nYou can also pass these options to progress.set and progress.update as a second\nargument, in which case they will override the defaults. The set and update\nmethods both return a promise that resolves when the tween completes.");
+    			attr_dev(div, "id", "_progress");
+    			add_location(div, file, 12, 0, 268);
+    			progress_1.value = /*$progress*/ ctx[0];
+    			attr_dev(progress_1, "class", "svelte-1i3gwf");
+    			add_location(progress_1, file, 14, 0, 292);
+    			add_location(button0, file, 16, 0, 324);
+    			add_location(button1, file, 18, 0, 380);
+    			add_location(button2, file, 20, 0, 440);
+    			add_location(button3, file, 22, 0, 499);
+    			add_location(button4, file, 24, 0, 559);
+    			add_location(br, file, 25, 0, 616);
+    			add_location(li0, file, 28, 2, 676);
+    			add_location(li1, file, 29, 2, 732);
+    			add_location(li2, file, 34, 2, 937);
+    			add_location(li3, file, 35, 2, 978);
+    			add_location(ul, file, 27, 0, 669);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, h1, anchor);
-    			append_dev(h1, t0);
-    			insert_dev(target, t1, anchor);
-    			insert_dev(target, input, anchor);
-    			set_input_value(input, /*$name*/ ctx[1]);
-    			insert_dev(target, t2, anchor);
     			insert_dev(target, div, anchor);
-    			append_dev(div, button);
+    			insert_dev(target, t0, anchor);
+    			insert_dev(target, progress_1, anchor);
+    			insert_dev(target, t1, anchor);
+    			insert_dev(target, button0, anchor);
+    			insert_dev(target, t3, anchor);
+    			insert_dev(target, button1, anchor);
+    			insert_dev(target, t5, anchor);
+    			insert_dev(target, button2, anchor);
+    			insert_dev(target, t7, anchor);
+    			insert_dev(target, button3, anchor);
+    			insert_dev(target, t9, anchor);
+    			insert_dev(target, button4, anchor);
+    			insert_dev(target, t11, anchor);
+    			insert_dev(target, br, anchor);
+    			insert_dev(target, t12, anchor);
+    			insert_dev(target, ul, anchor);
+    			append_dev(ul, li0);
+    			append_dev(ul, t14);
+    			append_dev(ul, li1);
+    			append_dev(ul, t16);
+    			append_dev(ul, li2);
+    			append_dev(ul, t18);
+    			append_dev(ul, li3);
+    			insert_dev(target, t20, anchor);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(input, "input", /*input_input_handler*/ ctx[2]),
-    					listen_dev(button, "click", /*click_handler*/ ctx[3], false, false, false)
+    					listen_dev(button0, "click", /*click_handler*/ ctx[2], false, false, false),
+    					listen_dev(button1, "click", /*click_handler_1*/ ctx[3], false, false, false),
+    					listen_dev(button2, "click", /*click_handler_2*/ ctx[4], false, false, false),
+    					listen_dev(button3, "click", /*click_handler_3*/ ctx[5], false, false, false),
+    					listen_dev(button4, "click", /*click_handler_4*/ ctx[6], false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*$greeting*/ 1) set_data_dev(t0, /*$greeting*/ ctx[0]);
-
-    			if (dirty & /*$name*/ 2 && input.value !== /*$name*/ ctx[1]) {
-    				set_input_value(input, /*$name*/ ctx[1]);
+    			if (dirty & /*$progress*/ 1) {
+    				prop_dev(progress_1, "value", /*$progress*/ ctx[0]);
     			}
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(h1);
-    			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(input);
-    			if (detaching) detach_dev(t2);
     			if (detaching) detach_dev(div);
+    			if (detaching) detach_dev(t0);
+    			if (detaching) detach_dev(progress_1);
+    			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(button0);
+    			if (detaching) detach_dev(t3);
+    			if (detaching) detach_dev(button1);
+    			if (detaching) detach_dev(t5);
+    			if (detaching) detach_dev(button2);
+    			if (detaching) detach_dev(t7);
+    			if (detaching) detach_dev(button3);
+    			if (detaching) detach_dev(t9);
+    			if (detaching) detach_dev(button4);
+    			if (detaching) detach_dev(t11);
+    			if (detaching) detach_dev(br);
+    			if (detaching) detach_dev(t12);
+    			if (detaching) detach_dev(ul);
+    			if (detaching) detach_dev(t20);
     			mounted = false;
     			run_all(dispose);
     		}
@@ -540,28 +712,34 @@ var app = (function () {
     }
 
     function instance($$self, $$props, $$invalidate) {
-    	let $greeting;
-    	let $name;
-    	validate_store(greeting, "greeting");
-    	component_subscribe($$self, greeting, $$value => $$invalidate(0, $greeting = $$value));
-    	validate_store(name, "name");
-    	component_subscribe($$self, name, $$value => $$invalidate(1, $name = $$value));
+    	let $progress;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
+    	const progress = tweened(0, { duration: 400, easing: cubicOut });
+    	validate_store(progress, "progress");
+    	component_subscribe($$self, progress, value => $$invalidate(0, $progress = value));
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function input_input_handler() {
-    		$name = this.value;
-    		name.set($name);
-    	}
+    	const click_handler = () => progress.set(0);
+    	const click_handler_1 = () => progress.set(0.25);
+    	const click_handler_2 = () => progress.set(0.5);
+    	const click_handler_3 = () => progress.set(0.75);
+    	const click_handler_4 = () => progress.set(1);
+    	$$self.$capture_state = () => ({ tweened, cubicOut, progress, $progress });
 
-    	const click_handler = () => name.set($name + "!");
-    	$$self.$capture_state = () => ({ name, greeting, $greeting, $name });
-    	return [$greeting, $name, input_input_handler, click_handler];
+    	return [
+    		$progress,
+    		progress,
+    		click_handler,
+    		click_handler_1,
+    		click_handler_2,
+    		click_handler_3,
+    		click_handler_4
+    	];
     }
 
     class App extends SvelteComponentDev {
