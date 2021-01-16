@@ -4,13 +4,6 @@ var app = (function () {
     'use strict';
 
     function noop() { }
-    const identity = x => x;
-    function assign(tar, src) {
-        // @ts-ignore
-        for (const k in src)
-            tar[k] = src[k];
-        return tar;
-    }
     function add_location(element, file, line, column, char) {
         element.__svelte_meta = {
             loc: { file, line, column, char }
@@ -97,6 +90,9 @@ var app = (function () {
     function element(name) {
         return document.createElement(name);
     }
+    function svg_element(name) {
+        return document.createElementNS('http://www.w3.org/2000/svg', name);
+    }
     function text(data) {
         return document.createTextNode(data);
     }
@@ -113,8 +109,17 @@ var app = (function () {
         else if (node.getAttribute(attribute) !== value)
             node.setAttribute(attribute, value);
     }
+    function to_number(value) {
+        return value === '' ? null : +value;
+    }
     function children(element) {
         return Array.from(element.childNodes);
+    }
+    function set_input_value(input, value) {
+        input.value = value == null ? '' : value;
+    }
+    function set_style(node, key, value, important) {
+        node.style.setProperty(key, value, important ? 'important' : '');
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
@@ -354,9 +359,12 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
-    function prop_dev(node, property, value) {
-        node[property] = value;
-        dispatch_dev('SvelteDOMSetProperty', { node, property, value });
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -437,264 +445,264 @@ var app = (function () {
         return { set, update, subscribe };
     }
 
-    function cubicOut(t) {
-        const f = t - 1.0;
-        return f * f * f + 1.0;
-    }
-
     function is_date(obj) {
         return Object.prototype.toString.call(obj) === '[object Date]';
     }
 
-    function get_interpolator(a, b) {
-        if (a === b || a !== a)
-            return () => a;
-        const type = typeof a;
-        if (type !== typeof b || Array.isArray(a) !== Array.isArray(b)) {
-            throw new Error('Cannot interpolate values of different type');
-        }
-        if (Array.isArray(a)) {
-            const arr = b.map((bi, i) => {
-                return get_interpolator(a[i], bi);
-            });
-            return t => arr.map(fn => fn(t));
-        }
-        if (type === 'object') {
-            if (!a || !b)
-                throw new Error('Object cannot be null');
-            if (is_date(a) && is_date(b)) {
-                a = a.getTime();
-                b = b.getTime();
-                const delta = b - a;
-                return t => new Date(a + t * delta);
+    function tick_spring(ctx, last_value, current_value, target_value) {
+        if (typeof current_value === 'number' || is_date(current_value)) {
+            // @ts-ignore
+            const delta = target_value - current_value;
+            // @ts-ignore
+            const velocity = (current_value - last_value) / (ctx.dt || 1 / 60); // guard div by 0
+            const spring = ctx.opts.stiffness * delta;
+            const damper = ctx.opts.damping * velocity;
+            const acceleration = (spring - damper) * ctx.inv_mass;
+            const d = (velocity + acceleration) * ctx.dt;
+            if (Math.abs(d) < ctx.opts.precision && Math.abs(delta) < ctx.opts.precision) {
+                return target_value; // settled
             }
-            const keys = Object.keys(b);
-            const interpolators = {};
-            keys.forEach(key => {
-                interpolators[key] = get_interpolator(a[key], b[key]);
-            });
-            return t => {
-                const result = {};
-                keys.forEach(key => {
-                    result[key] = interpolators[key](t);
-                });
-                return result;
-            };
+            else {
+                ctx.settled = false; // signal loop to keep ticking
+                // @ts-ignore
+                return is_date(current_value) ?
+                    new Date(current_value.getTime() + d) : current_value + d;
+            }
         }
-        if (type === 'number') {
-            const delta = b - a;
-            return t => a + t * delta;
+        else if (Array.isArray(current_value)) {
+            // @ts-ignore
+            return current_value.map((_, i) => tick_spring(ctx, last_value[i], current_value[i], target_value[i]));
         }
-        throw new Error(`Cannot interpolate ${type} values`);
+        else if (typeof current_value === 'object') {
+            const next_value = {};
+            for (const k in current_value) {
+                // @ts-ignore
+                next_value[k] = tick_spring(ctx, last_value[k], current_value[k], target_value[k]);
+            }
+            // @ts-ignore
+            return next_value;
+        }
+        else {
+            throw new Error(`Cannot spring ${typeof current_value} values`);
+        }
     }
-    function tweened(value, defaults = {}) {
+    function spring(value, opts = {}) {
         const store = writable(value);
+        const { stiffness = 0.15, damping = 0.8, precision = 0.01 } = opts;
+        let last_time;
         let task;
+        let current_token;
+        let last_value = value;
         let target_value = value;
-        function set(new_value, opts) {
-            if (value == null) {
-                store.set(value = new_value);
-                return Promise.resolve();
-            }
+        let inv_mass = 1;
+        let inv_mass_recovery_rate = 0;
+        let cancel_task = false;
+        function set(new_value, opts = {}) {
             target_value = new_value;
-            let previous_task = task;
-            let started = false;
-            let { delay = 0, duration = 400, easing = identity, interpolate = get_interpolator } = assign(assign({}, defaults), opts);
-            if (duration === 0) {
-                if (previous_task) {
-                    previous_task.abort();
-                    previous_task = null;
-                }
+            const token = current_token = {};
+            if (value == null || opts.hard || (spring.stiffness >= 1 && spring.damping >= 1)) {
+                cancel_task = true; // cancel any running animation
+                last_time = now();
+                last_value = new_value;
                 store.set(value = target_value);
                 return Promise.resolve();
             }
-            const start = now() + delay;
-            let fn;
-            task = loop(now => {
-                if (now < start)
-                    return true;
-                if (!started) {
-                    fn = interpolate(value, new_value);
-                    if (typeof duration === 'function')
-                        duration = duration(value, new_value);
-                    started = true;
-                }
-                if (previous_task) {
-                    previous_task.abort();
-                    previous_task = null;
-                }
-                const elapsed = now - start;
-                if (elapsed > duration) {
-                    store.set(value = new_value);
-                    return false;
-                }
-                // @ts-ignore
-                store.set(value = fn(easing(elapsed / duration)));
-                return true;
+            else if (opts.soft) {
+                const rate = opts.soft === true ? .5 : +opts.soft;
+                inv_mass_recovery_rate = 1 / (rate * 60);
+                inv_mass = 0; // infinite mass, unaffected by spring forces
+            }
+            if (!task) {
+                last_time = now();
+                cancel_task = false;
+                task = loop(now => {
+                    if (cancel_task) {
+                        cancel_task = false;
+                        task = null;
+                        return false;
+                    }
+                    inv_mass = Math.min(inv_mass + inv_mass_recovery_rate, 1);
+                    const ctx = {
+                        inv_mass,
+                        opts: spring,
+                        settled: true,
+                        dt: (now - last_time) * 60 / 1000
+                    };
+                    const next_value = tick_spring(ctx, last_value, value, target_value);
+                    last_time = now;
+                    last_value = value;
+                    store.set(value = next_value);
+                    if (ctx.settled) {
+                        task = null;
+                    }
+                    return !ctx.settled;
+                });
+            }
+            return new Promise(fulfil => {
+                task.promise.then(() => {
+                    if (token === current_token)
+                        fulfil();
+                });
             });
-            return task.promise;
         }
-        return {
+        const spring = {
             set,
             update: (fn, opts) => set(fn(target_value, value), opts),
-            subscribe: store.subscribe
+            subscribe: store.subscribe,
+            stiffness,
+            damping,
+            precision
         };
+        return spring;
     }
 
     /* src\App.svelte generated by Svelte v3.31.2 */
-
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
     	let div;
+    	let label0;
+    	let h30;
     	let t0;
-    	let progress_1;
+    	let t1_value = /*coords*/ ctx[0].stiffness + "";
     	let t1;
-    	let button0;
+    	let t2;
     	let t3;
-    	let button1;
+    	let input0;
+    	let t4;
+    	let label1;
+    	let h31;
     	let t5;
-    	let button2;
+    	let t6_value = /*coords*/ ctx[0].damping + "";
+    	let t6;
     	let t7;
-    	let button3;
+    	let t8;
+    	let input1;
     	let t9;
-    	let button4;
-    	let t11;
-    	let br;
-    	let t12;
-    	let ul;
-    	let li0;
-    	let t14;
-    	let li1;
-    	let t16;
-    	let li2;
-    	let t18;
-    	let li3;
-    	let t20;
+    	let svg;
+    	let circle;
+    	let circle_cx_value;
+    	let circle_cy_value;
     	let mounted;
     	let dispose;
 
     	const block = {
     		c: function create() {
     			div = element("div");
-    			t0 = space();
-    			progress_1 = element("progress");
-    			t1 = space();
-    			button0 = element("button");
-    			button0.textContent = "0%";
+    			label0 = element("label");
+    			h30 = element("h3");
+    			t0 = text("stiffness (");
+    			t1 = text(t1_value);
+    			t2 = text(")");
     			t3 = space();
-    			button1 = element("button");
-    			button1.textContent = "25%";
-    			t5 = space();
-    			button2 = element("button");
-    			button2.textContent = "50%";
-    			t7 = space();
-    			button3 = element("button");
-    			button3.textContent = "75%";
+    			input0 = element("input");
+    			t4 = space();
+    			label1 = element("label");
+    			h31 = element("h3");
+    			t5 = text("damping (");
+    			t6 = text(t6_value);
+    			t7 = text(")");
+    			t8 = space();
+    			input1 = element("input");
     			t9 = space();
-    			button4 = element("button");
-    			button4.textContent = "100%";
-    			t11 = space();
-    			br = element("br");
-    			t12 = text("\nThe full set of options available to tweened:\n");
-    			ul = element("ul");
-    			li0 = element("li");
-    			li0.textContent = "delay — milliseconds before the tween starts";
-    			t14 = space();
-    			li1 = element("li");
-    			li1.textContent = "duration — either the duration of the tween in milliseconds, or a (from, to)\n    => milliseconds function allowing you to (e.g.) specify longer tweens for\n    larger changes in value";
-    			t16 = space();
-    			li2 = element("li");
-    			li2.textContent = "easing — a p => t function";
-    			t18 = space();
-    			li3 = element("li");
-    			li3.textContent = "interpolate — a custom (from, to) => t => value function for\n    interpolating between arbitrary values. By default, Svelte will interpolate\n    between numbers, dates, and identically-shaped arrays and objects (as long\n    as they only contain numbers and dates or other valid arrays and objects).\n    If you want to interpolate (for example) colour strings or transformation\n    matrices, supply a custom interpolator";
-    			t20 = text("\n\nYou can also pass these options to progress.set and progress.update as a second\nargument, in which case they will override the defaults. The set and update\nmethods both return a promise that resolves when the tween completes.");
-    			attr_dev(div, "id", "_progress");
-    			add_location(div, file, 12, 0, 268);
-    			progress_1.value = /*$progress*/ ctx[0];
-    			attr_dev(progress_1, "class", "svelte-1i3gwf");
-    			add_location(progress_1, file, 14, 0, 292);
-    			add_location(button0, file, 16, 0, 324);
-    			add_location(button1, file, 18, 0, 380);
-    			add_location(button2, file, 20, 0, 440);
-    			add_location(button3, file, 22, 0, 499);
-    			add_location(button4, file, 24, 0, 559);
-    			add_location(br, file, 25, 0, 616);
-    			add_location(li0, file, 28, 2, 676);
-    			add_location(li1, file, 29, 2, 732);
-    			add_location(li2, file, 34, 2, 937);
-    			add_location(li3, file, 35, 2, 978);
-    			add_location(ul, file, 27, 0, 669);
+    			svg = svg_element("svg");
+    			circle = svg_element("circle");
+    			add_location(h30, file, 15, 4, 254);
+    			attr_dev(input0, "type", "range");
+    			attr_dev(input0, "min", "0");
+    			attr_dev(input0, "max", "1");
+    			attr_dev(input0, "step", "0.01");
+    			add_location(input0, file, 16, 4, 298);
+    			add_location(label0, file, 14, 2, 242);
+    			add_location(h31, file, 26, 4, 439);
+    			attr_dev(input1, "type", "range");
+    			attr_dev(input1, "min", "0");
+    			attr_dev(input1, "max", "1");
+    			attr_dev(input1, "step", "0.01");
+    			add_location(input1, file, 27, 4, 479);
+    			add_location(label1, file, 25, 2, 427);
+    			set_style(div, "position", "absolute");
+    			set_style(div, "right", "1em");
+    			add_location(div, file, 13, 0, 194);
+    			attr_dev(circle, "cx", circle_cx_value = /*$coords*/ ctx[1].x);
+    			attr_dev(circle, "cy", circle_cy_value = /*$coords*/ ctx[1].y);
+    			attr_dev(circle, "r", /*$size*/ ctx[2]);
+    			attr_dev(circle, "class", "svelte-16kw8z1");
+    			add_location(circle, file, 41, 2, 754);
+    			attr_dev(svg, "class", "svelte-16kw8z1");
+    			add_location(svg, file, 37, 0, 611);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, div, anchor);
-    			insert_dev(target, t0, anchor);
-    			insert_dev(target, progress_1, anchor);
-    			insert_dev(target, t1, anchor);
-    			insert_dev(target, button0, anchor);
-    			insert_dev(target, t3, anchor);
-    			insert_dev(target, button1, anchor);
-    			insert_dev(target, t5, anchor);
-    			insert_dev(target, button2, anchor);
-    			insert_dev(target, t7, anchor);
-    			insert_dev(target, button3, anchor);
+    			append_dev(div, label0);
+    			append_dev(label0, h30);
+    			append_dev(h30, t0);
+    			append_dev(h30, t1);
+    			append_dev(h30, t2);
+    			append_dev(label0, t3);
+    			append_dev(label0, input0);
+    			set_input_value(input0, /*coords*/ ctx[0].stiffness);
+    			append_dev(div, t4);
+    			append_dev(div, label1);
+    			append_dev(label1, h31);
+    			append_dev(h31, t5);
+    			append_dev(h31, t6);
+    			append_dev(h31, t7);
+    			append_dev(label1, t8);
+    			append_dev(label1, input1);
+    			set_input_value(input1, /*coords*/ ctx[0].damping);
     			insert_dev(target, t9, anchor);
-    			insert_dev(target, button4, anchor);
-    			insert_dev(target, t11, anchor);
-    			insert_dev(target, br, anchor);
-    			insert_dev(target, t12, anchor);
-    			insert_dev(target, ul, anchor);
-    			append_dev(ul, li0);
-    			append_dev(ul, t14);
-    			append_dev(ul, li1);
-    			append_dev(ul, t16);
-    			append_dev(ul, li2);
-    			append_dev(ul, t18);
-    			append_dev(ul, li3);
-    			insert_dev(target, t20, anchor);
+    			insert_dev(target, svg, anchor);
+    			append_dev(svg, circle);
 
     			if (!mounted) {
     				dispose = [
-    					listen_dev(button0, "click", /*click_handler*/ ctx[2], false, false, false),
-    					listen_dev(button1, "click", /*click_handler_1*/ ctx[3], false, false, false),
-    					listen_dev(button2, "click", /*click_handler_2*/ ctx[4], false, false, false),
-    					listen_dev(button3, "click", /*click_handler_3*/ ctx[5], false, false, false),
-    					listen_dev(button4, "click", /*click_handler_4*/ ctx[6], false, false, false)
+    					listen_dev(input0, "change", /*input0_change_input_handler*/ ctx[4]),
+    					listen_dev(input0, "input", /*input0_change_input_handler*/ ctx[4]),
+    					listen_dev(input1, "change", /*input1_change_input_handler*/ ctx[5]),
+    					listen_dev(input1, "input", /*input1_change_input_handler*/ ctx[5]),
+    					listen_dev(svg, "mousemove", /*mousemove_handler*/ ctx[6], false, false, false),
+    					listen_dev(svg, "mousedown", /*mousedown_handler*/ ctx[7], false, false, false),
+    					listen_dev(svg, "mouseup", /*mouseup_handler*/ ctx[8], false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*$progress*/ 1) {
-    				prop_dev(progress_1, "value", /*$progress*/ ctx[0]);
+    			if (dirty & /*coords*/ 1 && t1_value !== (t1_value = /*coords*/ ctx[0].stiffness + "")) set_data_dev(t1, t1_value);
+
+    			if (dirty & /*coords*/ 1) {
+    				set_input_value(input0, /*coords*/ ctx[0].stiffness);
+    			}
+
+    			if (dirty & /*coords*/ 1 && t6_value !== (t6_value = /*coords*/ ctx[0].damping + "")) set_data_dev(t6, t6_value);
+
+    			if (dirty & /*coords*/ 1) {
+    				set_input_value(input1, /*coords*/ ctx[0].damping);
+    			}
+
+    			if (dirty & /*$coords*/ 2 && circle_cx_value !== (circle_cx_value = /*$coords*/ ctx[1].x)) {
+    				attr_dev(circle, "cx", circle_cx_value);
+    			}
+
+    			if (dirty & /*$coords*/ 2 && circle_cy_value !== (circle_cy_value = /*$coords*/ ctx[1].y)) {
+    				attr_dev(circle, "cy", circle_cy_value);
+    			}
+
+    			if (dirty & /*$size*/ 4) {
+    				attr_dev(circle, "r", /*$size*/ ctx[2]);
     			}
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(div);
-    			if (detaching) detach_dev(t0);
-    			if (detaching) detach_dev(progress_1);
-    			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(button0);
-    			if (detaching) detach_dev(t3);
-    			if (detaching) detach_dev(button1);
-    			if (detaching) detach_dev(t5);
-    			if (detaching) detach_dev(button2);
-    			if (detaching) detach_dev(t7);
-    			if (detaching) detach_dev(button3);
     			if (detaching) detach_dev(t9);
-    			if (detaching) detach_dev(button4);
-    			if (detaching) detach_dev(t11);
-    			if (detaching) detach_dev(br);
-    			if (detaching) detach_dev(t12);
-    			if (detaching) detach_dev(ul);
-    			if (detaching) detach_dev(t20);
+    			if (detaching) detach_dev(svg);
     			mounted = false;
     			run_all(dispose);
     		}
@@ -712,33 +720,56 @@ var app = (function () {
     }
 
     function instance($$self, $$props, $$invalidate) {
-    	let $progress;
+    	let $coords;
+    	let $size;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	const progress = tweened(0, { duration: 400, easing: cubicOut });
-    	validate_store(progress, "progress");
-    	component_subscribe($$self, progress, value => $$invalidate(0, $progress = value));
+    	let coords = spring({ x: 50, y: 50 }, { stiffness: 0.1, damping: 0.25 });
+    	validate_store(coords, "coords");
+    	component_subscribe($$self, coords, value => $$invalidate(1, $coords = value));
+    	let size = spring(10);
+    	validate_store(size, "size");
+    	component_subscribe($$self, size, value => $$invalidate(2, $size = value));
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	const click_handler = () => progress.set(0);
-    	const click_handler_1 = () => progress.set(0.25);
-    	const click_handler_2 = () => progress.set(0.5);
-    	const click_handler_3 = () => progress.set(0.75);
-    	const click_handler_4 = () => progress.set(1);
-    	$$self.$capture_state = () => ({ tweened, cubicOut, progress, $progress });
+    	function input0_change_input_handler() {
+    		coords.stiffness = to_number(this.value);
+    		$$invalidate(0, coords);
+    	}
+
+    	function input1_change_input_handler() {
+    		coords.damping = to_number(this.value);
+    		$$invalidate(0, coords);
+    	}
+
+    	const mousemove_handler = e => coords.set({ x: e.clientX, y: e.clientY });
+    	const mousedown_handler = () => size.set(30);
+    	const mouseup_handler = () => size.set(10);
+    	$$self.$capture_state = () => ({ spring, coords, size, $coords, $size });
+
+    	$$self.$inject_state = $$props => {
+    		if ("coords" in $$props) $$invalidate(0, coords = $$props.coords);
+    		if ("size" in $$props) $$invalidate(3, size = $$props.size);
+    	};
+
+    	if ($$props && "$$inject" in $$props) {
+    		$$self.$inject_state($$props.$$inject);
+    	}
 
     	return [
-    		$progress,
-    		progress,
-    		click_handler,
-    		click_handler_1,
-    		click_handler_2,
-    		click_handler_3,
-    		click_handler_4
+    		coords,
+    		$coords,
+    		$size,
+    		size,
+    		input0_change_input_handler,
+    		input1_change_input_handler,
+    		mousemove_handler,
+    		mousedown_handler,
+    		mouseup_handler
     	];
     }
 
