@@ -1,9 +1,11 @@
 <script>
-  import { count } from './stores.js';
+  import { name, greeting } from './stores.js';
 </script>
 
-<h1>{$count}</h1>
-
-<button on:click={count.increment}>+</button>
-<button on:click={count.decrement}>-</button>
-<button on:click={count.reset}>reset</button>
+<h1>{$greeting}</h1>
+<input bind:value={$name} />
+<div class="button_wrap">
+  <button on:click={() => name.set($name + '!')}>
+    Add exclamation mark!
+  </button>
+</div>
