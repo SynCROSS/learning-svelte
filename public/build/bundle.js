@@ -4,6 +4,7 @@ var app = (function () {
     'use strict';
 
     function noop() { }
+    const identity = x => x;
     function add_location(element, file, line, column, char) {
         element.__svelte_meta = {
             loc: { file, line, column, char }
@@ -26,21 +27,6 @@ var app = (function () {
     }
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
-    }
-    function validate_store(store, name) {
-        if (store != null && typeof store.subscribe !== 'function') {
-            throw new Error(`'${name}' is not a store with a 'subscribe' method`);
-        }
-    }
-    function subscribe(store, ...callbacks) {
-        if (store == null) {
-            return noop;
-        }
-        const unsub = store.subscribe(...callbacks);
-        return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
-    }
-    function component_subscribe(component, store, callback) {
-        component.$$.on_destroy.push(subscribe(store, callback));
     }
 
     const is_client = typeof window !== 'undefined';
@@ -90,14 +76,14 @@ var app = (function () {
     function element(name) {
         return document.createElement(name);
     }
-    function svg_element(name) {
-        return document.createElementNS('http://www.w3.org/2000/svg', name);
-    }
     function text(data) {
         return document.createTextNode(data);
     }
     function space() {
         return text(' ');
+    }
+    function empty() {
+        return text('');
     }
     function listen(node, event, handler, options) {
         node.addEventListener(event, handler, options);
@@ -109,22 +95,74 @@ var app = (function () {
         else if (node.getAttribute(attribute) !== value)
             node.setAttribute(attribute, value);
     }
-    function to_number(value) {
-        return value === '' ? null : +value;
-    }
     function children(element) {
         return Array.from(element.childNodes);
-    }
-    function set_input_value(input, value) {
-        input.value = value == null ? '' : value;
-    }
-    function set_style(node, key, value, important) {
-        node.style.setProperty(key, value, important ? 'important' : '');
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
         e.initCustomEvent(type, false, false, detail);
         return e;
+    }
+
+    const active_docs = new Set();
+    let active = 0;
+    // https://github.com/darkskyapp/string-hash/blob/master/index.js
+    function hash(str) {
+        let hash = 5381;
+        let i = str.length;
+        while (i--)
+            hash = ((hash << 5) - hash) ^ str.charCodeAt(i);
+        return hash >>> 0;
+    }
+    function create_rule(node, a, b, duration, delay, ease, fn, uid = 0) {
+        const step = 16.666 / duration;
+        let keyframes = '{\n';
+        for (let p = 0; p <= 1; p += step) {
+            const t = a + (b - a) * ease(p);
+            keyframes += p * 100 + `%{${fn(t, 1 - t)}}\n`;
+        }
+        const rule = keyframes + `100% {${fn(b, 1 - b)}}\n}`;
+        const name = `__svelte_${hash(rule)}_${uid}`;
+        const doc = node.ownerDocument;
+        active_docs.add(doc);
+        const stylesheet = doc.__svelte_stylesheet || (doc.__svelte_stylesheet = doc.head.appendChild(element('style')).sheet);
+        const current_rules = doc.__svelte_rules || (doc.__svelte_rules = {});
+        if (!current_rules[name]) {
+            current_rules[name] = true;
+            stylesheet.insertRule(`@keyframes ${name} ${rule}`, stylesheet.cssRules.length);
+        }
+        const animation = node.style.animation || '';
+        node.style.animation = `${animation ? `${animation}, ` : ''}${name} ${duration}ms linear ${delay}ms 1 both`;
+        active += 1;
+        return name;
+    }
+    function delete_rule(node, name) {
+        const previous = (node.style.animation || '').split(', ');
+        const next = previous.filter(name
+            ? anim => anim.indexOf(name) < 0 // remove specific animation
+            : anim => anim.indexOf('__svelte') === -1 // remove all Svelte animations
+        );
+        const deleted = previous.length - next.length;
+        if (deleted) {
+            node.style.animation = next.join(', ');
+            active -= deleted;
+            if (!active)
+                clear_rules();
+        }
+    }
+    function clear_rules() {
+        raf(() => {
+            if (active)
+                return;
+            active_docs.forEach(doc => {
+                const stylesheet = doc.__svelte_stylesheet;
+                let i = stylesheet.cssRules.length;
+                while (i--)
+                    stylesheet.deleteRule(i);
+                doc.__svelte_rules = {};
+            });
+            active_docs.clear();
+        });
     }
 
     let current_component;
@@ -195,12 +233,162 @@ var app = (function () {
             $$.after_update.forEach(add_render_callback);
         }
     }
+
+    let promise;
+    function wait() {
+        if (!promise) {
+            promise = Promise.resolve();
+            promise.then(() => {
+                promise = null;
+            });
+        }
+        return promise;
+    }
+    function dispatch(node, direction, kind) {
+        node.dispatchEvent(custom_event(`${direction ? 'intro' : 'outro'}${kind}`));
+    }
     const outroing = new Set();
+    let outros;
+    function group_outros() {
+        outros = {
+            r: 0,
+            c: [],
+            p: outros // parent group
+        };
+    }
+    function check_outros() {
+        if (!outros.r) {
+            run_all(outros.c);
+        }
+        outros = outros.p;
+    }
     function transition_in(block, local) {
         if (block && block.i) {
             outroing.delete(block);
             block.i(local);
         }
+    }
+    function transition_out(block, local, detach, callback) {
+        if (block && block.o) {
+            if (outroing.has(block))
+                return;
+            outroing.add(block);
+            outros.c.push(() => {
+                outroing.delete(block);
+                if (callback) {
+                    if (detach)
+                        block.d(1);
+                    callback();
+                }
+            });
+            block.o(local);
+        }
+    }
+    const null_transition = { duration: 0 };
+    function create_bidirectional_transition(node, fn, params, intro) {
+        let config = fn(node, params);
+        let t = intro ? 0 : 1;
+        let running_program = null;
+        let pending_program = null;
+        let animation_name = null;
+        function clear_animation() {
+            if (animation_name)
+                delete_rule(node, animation_name);
+        }
+        function init(program, duration) {
+            const d = program.b - t;
+            duration *= Math.abs(d);
+            return {
+                a: t,
+                b: program.b,
+                d,
+                duration,
+                start: program.start,
+                end: program.start + duration,
+                group: program.group
+            };
+        }
+        function go(b) {
+            const { delay = 0, duration = 300, easing = identity, tick = noop, css } = config || null_transition;
+            const program = {
+                start: now() + delay,
+                b
+            };
+            if (!b) {
+                // @ts-ignore todo: improve typings
+                program.group = outros;
+                outros.r += 1;
+            }
+            if (running_program || pending_program) {
+                pending_program = program;
+            }
+            else {
+                // if this is an intro, and there's a delay, we need to do
+                // an initial tick and/or apply CSS animation immediately
+                if (css) {
+                    clear_animation();
+                    animation_name = create_rule(node, t, b, duration, delay, easing, css);
+                }
+                if (b)
+                    tick(0, 1);
+                running_program = init(program, duration);
+                add_render_callback(() => dispatch(node, b, 'start'));
+                loop(now => {
+                    if (pending_program && now > pending_program.start) {
+                        running_program = init(pending_program, duration);
+                        pending_program = null;
+                        dispatch(node, running_program.b, 'start');
+                        if (css) {
+                            clear_animation();
+                            animation_name = create_rule(node, t, running_program.b, running_program.duration, 0, easing, config.css);
+                        }
+                    }
+                    if (running_program) {
+                        if (now >= running_program.end) {
+                            tick(t = running_program.b, 1 - t);
+                            dispatch(node, running_program.b, 'end');
+                            if (!pending_program) {
+                                // we're done
+                                if (running_program.b) {
+                                    // intro — we can tidy up immediately
+                                    clear_animation();
+                                }
+                                else {
+                                    // outro — needs to be coordinated
+                                    if (!--running_program.group.r)
+                                        run_all(running_program.group.c);
+                                }
+                            }
+                            running_program = null;
+                        }
+                        else if (now >= running_program.start) {
+                            const p = now - running_program.start;
+                            t = running_program.a + running_program.d * easing(p / running_program.duration);
+                            tick(t, 1 - t);
+                        }
+                    }
+                    return !!(running_program || pending_program);
+                });
+            }
+        }
+        return {
+            run(b) {
+                if (is_function(config)) {
+                    wait().then(() => {
+                        // @ts-ignore
+                        config = config();
+                        go(b);
+                    });
+                }
+                else {
+                    go(b);
+                }
+            },
+            end() {
+                clear_animation();
+                running_program = pending_program = null;
+            }
+        };
     }
     function mount_component(component, target, anchor) {
         const { fragment, on_mount, on_destroy, after_update } = component.$$;
@@ -359,13 +547,6 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
-    function set_data_dev(text, data) {
-        data = '' + data;
-        if (text.wholeText === data)
-            return;
-        dispatch_dev('SvelteDOMSetData', { node: text, data });
-        text.data = data;
-    }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
             if (!~keys.indexOf(slot_key)) {
@@ -393,318 +574,150 @@ var app = (function () {
         $inject_state() { }
     }
 
-    const subscriber_queue = [];
-    /**
-     * Create a `Writable` store that allows both updating and reading by subscription.
-     * @param {*=}value initial value
-     * @param {StartStopNotifier=}start start and stop notifications for subscriptions
-     */
-    function writable(value, start = noop) {
-        let stop;
-        const subscribers = [];
-        function set(new_value) {
-            if (safe_not_equal(value, new_value)) {
-                value = new_value;
-                if (stop) { // store is ready
-                    const run_queue = !subscriber_queue.length;
-                    for (let i = 0; i < subscribers.length; i += 1) {
-                        const s = subscribers[i];
-                        s[1]();
-                        subscriber_queue.push(s, value);
-                    }
-                    if (run_queue) {
-                        for (let i = 0; i < subscriber_queue.length; i += 2) {
-                            subscriber_queue[i][0](subscriber_queue[i + 1]);
-                        }
-                        subscriber_queue.length = 0;
-                    }
-                }
-            }
-        }
-        function update(fn) {
-            set(fn(value));
-        }
-        function subscribe(run, invalidate = noop) {
-            const subscriber = [run, invalidate];
-            subscribers.push(subscriber);
-            if (subscribers.length === 1) {
-                stop = start(set) || noop;
-            }
-            run(value);
-            return () => {
-                const index = subscribers.indexOf(subscriber);
-                if (index !== -1) {
-                    subscribers.splice(index, 1);
-                }
-                if (subscribers.length === 0) {
-                    stop();
-                    stop = null;
-                }
-            };
-        }
-        return { set, update, subscribe };
-    }
-
-    function is_date(obj) {
-        return Object.prototype.toString.call(obj) === '[object Date]';
-    }
-
-    function tick_spring(ctx, last_value, current_value, target_value) {
-        if (typeof current_value === 'number' || is_date(current_value)) {
-            // @ts-ignore
-            const delta = target_value - current_value;
-            // @ts-ignore
-            const velocity = (current_value - last_value) / (ctx.dt || 1 / 60); // guard div by 0
-            const spring = ctx.opts.stiffness * delta;
-            const damper = ctx.opts.damping * velocity;
-            const acceleration = (spring - damper) * ctx.inv_mass;
-            const d = (velocity + acceleration) * ctx.dt;
-            if (Math.abs(d) < ctx.opts.precision && Math.abs(delta) < ctx.opts.precision) {
-                return target_value; // settled
-            }
-            else {
-                ctx.settled = false; // signal loop to keep ticking
-                // @ts-ignore
-                return is_date(current_value) ?
-                    new Date(current_value.getTime() + d) : current_value + d;
-            }
-        }
-        else if (Array.isArray(current_value)) {
-            // @ts-ignore
-            return current_value.map((_, i) => tick_spring(ctx, last_value[i], current_value[i], target_value[i]));
-        }
-        else if (typeof current_value === 'object') {
-            const next_value = {};
-            for (const k in current_value) {
-                // @ts-ignore
-                next_value[k] = tick_spring(ctx, last_value[k], current_value[k], target_value[k]);
-            }
-            // @ts-ignore
-            return next_value;
-        }
-        else {
-            throw new Error(`Cannot spring ${typeof current_value} values`);
-        }
-    }
-    function spring(value, opts = {}) {
-        const store = writable(value);
-        const { stiffness = 0.15, damping = 0.8, precision = 0.01 } = opts;
-        let last_time;
-        let task;
-        let current_token;
-        let last_value = value;
-        let target_value = value;
-        let inv_mass = 1;
-        let inv_mass_recovery_rate = 0;
-        let cancel_task = false;
-        function set(new_value, opts = {}) {
-            target_value = new_value;
-            const token = current_token = {};
-            if (value == null || opts.hard || (spring.stiffness >= 1 && spring.damping >= 1)) {
-                cancel_task = true; // cancel any running animation
-                last_time = now();
-                last_value = new_value;
-                store.set(value = target_value);
-                return Promise.resolve();
-            }
-            else if (opts.soft) {
-                const rate = opts.soft === true ? .5 : +opts.soft;
-                inv_mass_recovery_rate = 1 / (rate * 60);
-                inv_mass = 0; // infinite mass, unaffected by spring forces
-            }
-            if (!task) {
-                last_time = now();
-                cancel_task = false;
-                task = loop(now => {
-                    if (cancel_task) {
-                        cancel_task = false;
-                        task = null;
-                        return false;
-                    }
-                    inv_mass = Math.min(inv_mass + inv_mass_recovery_rate, 1);
-                    const ctx = {
-                        inv_mass,
-                        opts: spring,
-                        settled: true,
-                        dt: (now - last_time) * 60 / 1000
-                    };
-                    const next_value = tick_spring(ctx, last_value, value, target_value);
-                    last_time = now;
-                    last_value = value;
-                    store.set(value = next_value);
-                    if (ctx.settled) {
-                        task = null;
-                    }
-                    return !ctx.settled;
-                });
-            }
-            return new Promise(fulfil => {
-                task.promise.then(() => {
-                    if (token === current_token)
-                        fulfil();
-                });
-            });
-        }
-        const spring = {
-            set,
-            update: (fn, opts) => set(fn(target_value, value), opts),
-            subscribe: store.subscribe,
-            stiffness,
-            damping,
-            precision
+    function fade(node, { delay = 0, duration = 400, easing = identity }) {
+        const o = +getComputedStyle(node).opacity;
+        return {
+            delay,
+            duration,
+            easing,
+            css: t => `opacity: ${t * o}`
         };
-        return spring;
     }
 
     /* src\App.svelte generated by Svelte v3.31.2 */
     const file = "src\\App.svelte";
 
-    function create_fragment(ctx) {
-    	let div;
-    	let label0;
-    	let h30;
-    	let t0;
-    	let t1_value = /*coords*/ ctx[0].stiffness + "";
-    	let t1;
-    	let t2;
-    	let t3;
-    	let input0;
-    	let t4;
-    	let label1;
-    	let h31;
-    	let t5;
-    	let t6_value = /*coords*/ ctx[0].damping + "";
-    	let t6;
-    	let t7;
-    	let t8;
-    	let input1;
-    	let t9;
-    	let svg;
-    	let circle;
-    	let circle_cx_value;
-    	let circle_cy_value;
-    	let mounted;
-    	let dispose;
+    // (11:0) {#if visible}
+    function create_if_block(ctx) {
+    	let p;
+    	let p_transition;
+    	let current;
 
     	const block = {
     		c: function create() {
-    			div = element("div");
-    			label0 = element("label");
-    			h30 = element("h3");
-    			t0 = text("stiffness (");
-    			t1 = text(t1_value);
-    			t2 = text(")");
-    			t3 = space();
-    			input0 = element("input");
-    			t4 = space();
-    			label1 = element("label");
-    			h31 = element("h3");
-    			t5 = text("damping (");
-    			t6 = text(t6_value);
-    			t7 = text(")");
-    			t8 = space();
-    			input1 = element("input");
-    			t9 = space();
-    			svg = svg_element("svg");
-    			circle = svg_element("circle");
-    			add_location(h30, file, 15, 4, 254);
-    			attr_dev(input0, "type", "range");
-    			attr_dev(input0, "min", "0");
-    			attr_dev(input0, "max", "1");
-    			attr_dev(input0, "step", "0.01");
-    			add_location(input0, file, 16, 4, 298);
-    			add_location(label0, file, 14, 2, 242);
-    			add_location(h31, file, 26, 4, 439);
-    			attr_dev(input1, "type", "range");
-    			attr_dev(input1, "min", "0");
-    			attr_dev(input1, "max", "1");
-    			attr_dev(input1, "step", "0.01");
-    			add_location(input1, file, 27, 4, 479);
-    			add_location(label1, file, 25, 2, 427);
-    			set_style(div, "position", "absolute");
-    			set_style(div, "right", "1em");
-    			add_location(div, file, 13, 0, 194);
-    			attr_dev(circle, "cx", circle_cx_value = /*$coords*/ ctx[1].x);
-    			attr_dev(circle, "cy", circle_cy_value = /*$coords*/ ctx[1].y);
-    			attr_dev(circle, "r", /*$size*/ ctx[2]);
-    			attr_dev(circle, "class", "svelte-16kw8z1");
-    			add_location(circle, file, 41, 2, 754);
-    			attr_dev(svg, "class", "svelte-16kw8z1");
-    			add_location(svg, file, 37, 0, 611);
+    			p = element("p");
+    			p.textContent = "Fades in and out";
+    			add_location(p, file, 11, 2, 181);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    			current = true;
+    		},
+    		i: function intro(local) {
+    			if (current) return;
+
+    			add_render_callback(() => {
+    				if (!p_transition) p_transition = create_bidirectional_transition(p, fade, {}, true);
+    				p_transition.run(1);
+    			});
+
+    			current = true;
+    		},
+    		o: function outro(local) {
+    			if (!p_transition) p_transition = create_bidirectional_transition(p, fade, {}, false);
+    			p_transition.run(0);
+    			current = false;
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    			if (detaching && p_transition) p_transition.end();
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block.name,
+    		type: "if",
+    		source: "(11:0) {#if visible}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    function create_fragment(ctx) {
+    	let label;
+    	let input;
+    	let t0;
+    	let t1;
+    	let if_block_anchor;
+    	let current;
+    	let mounted;
+    	let dispose;
+    	let if_block = /*visible*/ ctx[0] && create_if_block(ctx);
+
+    	const block = {
+    		c: function create() {
+    			label = element("label");
+    			input = element("input");
+    			t0 = text("\n  visible");
+    			t1 = space();
+    			if (if_block) if_block.c();
+    			if_block_anchor = empty();
+    			attr_dev(input, "type", "checkbox");
+    			add_location(input, file, 6, 2, 96);
+    			add_location(label, file, 5, 0, 86);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, div, anchor);
-    			append_dev(div, label0);
-    			append_dev(label0, h30);
-    			append_dev(h30, t0);
-    			append_dev(h30, t1);
-    			append_dev(h30, t2);
-    			append_dev(label0, t3);
-    			append_dev(label0, input0);
-    			set_input_value(input0, /*coords*/ ctx[0].stiffness);
-    			append_dev(div, t4);
-    			append_dev(div, label1);
-    			append_dev(label1, h31);
-    			append_dev(h31, t5);
-    			append_dev(h31, t6);
-    			append_dev(h31, t7);
-    			append_dev(label1, t8);
-    			append_dev(label1, input1);
-    			set_input_value(input1, /*coords*/ ctx[0].damping);
-    			insert_dev(target, t9, anchor);
-    			insert_dev(target, svg, anchor);
-    			append_dev(svg, circle);
+    			insert_dev(target, label, anchor);
+    			append_dev(label, input);
+    			input.checked = /*visible*/ ctx[0];
+    			append_dev(label, t0);
+    			insert_dev(target, t1, anchor);
+    			if (if_block) if_block.m(target, anchor);
+    			insert_dev(target, if_block_anchor, anchor);
+    			current = true;
 
     			if (!mounted) {
-    				dispose = [
-    					listen_dev(input0, "change", /*input0_change_input_handler*/ ctx[4]),
-    					listen_dev(input0, "input", /*input0_change_input_handler*/ ctx[4]),
-    					listen_dev(input1, "change", /*input1_change_input_handler*/ ctx[5]),
-    					listen_dev(input1, "input", /*input1_change_input_handler*/ ctx[5]),
-    					listen_dev(svg, "mousemove", /*mousemove_handler*/ ctx[6], false, false, false),
-    					listen_dev(svg, "mousedown", /*mousedown_handler*/ ctx[7], false, false, false),
-    					listen_dev(svg, "mouseup", /*mouseup_handler*/ ctx[8], false, false, false)
-    				];
-
+    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[1]);
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*coords*/ 1 && t1_value !== (t1_value = /*coords*/ ctx[0].stiffness + "")) set_data_dev(t1, t1_value);
-
-    			if (dirty & /*coords*/ 1) {
-    				set_input_value(input0, /*coords*/ ctx[0].stiffness);
+    			if (dirty & /*visible*/ 1) {
+    				input.checked = /*visible*/ ctx[0];
     			}
 
-    			if (dirty & /*coords*/ 1 && t6_value !== (t6_value = /*coords*/ ctx[0].damping + "")) set_data_dev(t6, t6_value);
+    			if (/*visible*/ ctx[0]) {
+    				if (if_block) {
+    					if (dirty & /*visible*/ 1) {
+    						transition_in(if_block, 1);
+    					}
+    				} else {
+    					if_block = create_if_block(ctx);
+    					if_block.c();
+    					transition_in(if_block, 1);
+    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    				}
+    			} else if (if_block) {
+    				group_outros();
 
-    			if (dirty & /*coords*/ 1) {
-    				set_input_value(input1, /*coords*/ ctx[0].damping);
-    			}
+    				transition_out(if_block, 1, 1, () => {
+    					if_block = null;
+    				});
 
-    			if (dirty & /*$coords*/ 2 && circle_cx_value !== (circle_cx_value = /*$coords*/ ctx[1].x)) {
-    				attr_dev(circle, "cx", circle_cx_value);
-    			}
-
-    			if (dirty & /*$coords*/ 2 && circle_cy_value !== (circle_cy_value = /*$coords*/ ctx[1].y)) {
-    				attr_dev(circle, "cy", circle_cy_value);
-    			}
-
-    			if (dirty & /*$size*/ 4) {
-    				attr_dev(circle, "r", /*$size*/ ctx[2]);
+    				check_outros();
     			}
     		},
-    		i: noop,
-    		o: noop,
+    		i: function intro(local) {
+    			if (current) return;
+    			transition_in(if_block);
+    			current = true;
+    		},
+    		o: function outro(local) {
+    			transition_out(if_block);
+    			current = false;
+    		},
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(div);
-    			if (detaching) detach_dev(t9);
-    			if (detaching) detach_dev(svg);
+    			if (detaching) detach_dev(label);
+    			if (detaching) detach_dev(t1);
+    			if (if_block) if_block.d(detaching);
+    			if (detaching) detach_dev(if_block_anchor);
     			mounted = false;
-    			run_all(dispose);
+    			dispose();
     		}
     	};
 
@@ -720,57 +733,31 @@ var app = (function () {
     }
 
     function instance($$self, $$props, $$invalidate) {
-    	let $coords;
-    	let $size;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let coords = spring({ x: 50, y: 50 }, { stiffness: 0.1, damping: 0.25 });
-    	validate_store(coords, "coords");
-    	component_subscribe($$self, coords, value => $$invalidate(1, $coords = value));
-    	let size = spring(10);
-    	validate_store(size, "size");
-    	component_subscribe($$self, size, value => $$invalidate(2, $size = value));
+    	let visible = true;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	function input0_change_input_handler() {
-    		coords.stiffness = to_number(this.value);
-    		$$invalidate(0, coords);
+    	function input_change_handler() {
+    		visible = this.checked;
+    		$$invalidate(0, visible);
     	}
 
-    	function input1_change_input_handler() {
-    		coords.damping = to_number(this.value);
-    		$$invalidate(0, coords);
-    	}
-
-    	const mousemove_handler = e => coords.set({ x: e.clientX, y: e.clientY });
-    	const mousedown_handler = () => size.set(30);
-    	const mouseup_handler = () => size.set(10);
-    	$$self.$capture_state = () => ({ spring, coords, size, $coords, $size });
+    	$$self.$capture_state = () => ({ fade, visible });
 
     	$$self.$inject_state = $$props => {
-    		if ("coords" in $$props) $$invalidate(0, coords = $$props.coords);
-    		if ("size" in $$props) $$invalidate(3, size = $$props.size);
+    		if ("visible" in $$props) $$invalidate(0, visible = $$props.visible);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [
-    		coords,
-    		$coords,
-    		$size,
-    		size,
-    		input0_change_input_handler,
-    		input1_change_input_handler,
-    		mousemove_handler,
-    		mousedown_handler,
-    		mouseup_handler
-    	];
+    	return [visible, input_change_handler];
     }
 
     class App extends SvelteComponentDev {
