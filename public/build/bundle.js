@@ -285,108 +285,121 @@ var app = (function () {
         }
     }
     const null_transition = { duration: 0 };
-    function create_bidirectional_transition(node, fn, params, intro) {
+    function create_in_transition(node, fn, params) {
         let config = fn(node, params);
-        let t = intro ? 0 : 1;
-        let running_program = null;
-        let pending_program = null;
-        let animation_name = null;
-        function clear_animation() {
+        let running = false;
+        let animation_name;
+        let task;
+        let uid = 0;
+        function cleanup() {
             if (animation_name)
                 delete_rule(node, animation_name);
         }
-        function init(program, duration) {
-            const d = program.b - t;
-            duration *= Math.abs(d);
-            return {
-                a: t,
-                b: program.b,
-                d,
-                duration,
-                start: program.start,
-                end: program.start + duration,
-                group: program.group
-            };
-        }
-        function go(b) {
+        function go() {
             const { delay = 0, duration = 300, easing = identity, tick = noop, css } = config || null_transition;
-            const program = {
-                start: now() + delay,
-                b
-            };
-            if (!b) {
-                // @ts-ignore todo: improve typings
-                program.group = outros;
-                outros.r += 1;
-            }
-            if (running_program || pending_program) {
-                pending_program = program;
-            }
-            else {
-                // if this is an intro, and there's a delay, we need to do
-                // an initial tick and/or apply CSS animation immediately
-                if (css) {
-                    clear_animation();
-                    animation_name = create_rule(node, t, b, duration, delay, easing, css);
+            if (css)
+                animation_name = create_rule(node, 0, 1, duration, delay, easing, css, uid++);
+            tick(0, 1);
+            const start_time = now() + delay;
+            const end_time = start_time + duration;
+            if (task)
+                task.abort();
+            running = true;
+            add_render_callback(() => dispatch(node, true, 'start'));
+            task = loop(now => {
+                if (running) {
+                    if (now >= end_time) {
+                        tick(1, 0);
+                        dispatch(node, true, 'end');
+                        cleanup();
+                        return running = false;
+                    }
+                    if (now >= start_time) {
+                        const t = easing((now - start_time) / duration);
+                        tick(t, 1 - t);
+                    }
                 }
-                if (b)
-                    tick(0, 1);
-                running_program = init(program, duration);
-                add_render_callback(() => dispatch(node, b, 'start'));
-                loop(now => {
-                    if (pending_program && now > pending_program.start) {
-                        running_program = init(pending_program, duration);
-                        pending_program = null;
-                        dispatch(node, running_program.b, 'start');
-                        if (css) {
-                            clear_animation();
-                            animation_name = create_rule(node, t, running_program.b, running_program.duration, 0, easing, config.css);
-                        }
-                    }
-                    if (running_program) {
-                        if (now >= running_program.end) {
-                            tick(t = running_program.b, 1 - t);
-                            dispatch(node, running_program.b, 'end');
-                            if (!pending_program) {
-                                // we're done
-                                if (running_program.b) {
-                                    // intro — we can tidy up immediately
-                                    clear_animation();
-                                }
-                                else {
-                                    // outro — needs to be coordinated
-                                    if (!--running_program.group.r)
-                                        run_all(running_program.group.c);
-                                }
-                            }
-                            running_program = null;
-                        }
-                        else if (now >= running_program.start) {
-                            const p = now - running_program.start;
-                            t = running_program.a + running_program.d * easing(p / running_program.duration);
-                            tick(t, 1 - t);
-                        }
-                    }
-                    return !!(running_program || pending_program);
-                });
-            }
+                return running;
+            });
         }
+        let started = false;
         return {
-            run(b) {
+            start() {
+                if (started)
+                    return;
+                delete_rule(node);
                 if (is_function(config)) {
-                    wait().then(() => {
-                        // @ts-ignore
-                        config = config();
-                        go(b);
-                    });
+                    config = config();
+                    wait().then(go);
                 }
                 else {
-                    go(b);
+                    go();
                 }
             },
+            invalidate() {
+                started = false;
+            },
             end() {
-                clear_animation();
-                running_program = pending_program = null;
+                if (running) {
+                    cleanup();
+                    running = false;
+                }
+            }
+        };
+    }
+    function create_out_transition(node, fn, params) {
+        let config = fn(node, params);
+        let running = true;
+        let animation_name;
+        const group = outros;
+        group.r += 1;
+        function go() {
+            const { delay = 0, duration = 300, easing = identity, tick = noop, css } = config || null_transition;
+            if (css)
+                animation_name = create_rule(node, 1, 0, duration, delay, easing, css);
+            const start_time = now() + delay;
+            const end_time = start_time + duration;
+            add_render_callback(() => dispatch(node, false, 'start'));
+            loop(now => {
+                if (running) {
+                    if (now >= end_time) {
+                        tick(0, 1);
+                        dispatch(node, false, 'end');
+                        if (!--group.r) {
+                            // this will result in `end()` being called,
+                            // so we don't need to clean up here
+                            run_all(group.c);
+                        }
+                        return false;
+                    }
+                    if (now >= start_time) {
+                        const t = easing((now - start_time) / duration);
+                        tick(1 - t, t);
+                    }
+                }
+                return running;
+            });
+        }
+        if (is_function(config)) {
+            wait().then(() => {
+                // @ts-ignore
+                config = config();
+                go();
+            });
+        }
+        else {
+            go();
+        }
+        return {
+            end(reset) {
+                if (reset && config.tick) {
+                    config.tick(1, 0);
+                }
+                if (running) {
+                    if (animation_name)
+                        delete_rule(node, animation_name);
+                    running = false;
+                }
             }
         };
     }
@@ -579,6 +592,15 @@ var app = (function () {
         return f * f * f + 1.0;
     }
 
+    function fade(node, { delay = 0, duration = 400, easing = identity }) {
+        const o = +getComputedStyle(node).opacity;
+        return {
+            delay,
+            duration,
+            easing,
+            css: t => `opacity: ${t * o}`
+        };
+    }
     function fly(node, { delay = 0, duration = 400, easing = cubicOut, x = 0, y = 0, opacity = 0 }) {
         const style = getComputedStyle(node);
         const target_opacity = +style.opacity;
@@ -600,14 +622,15 @@ var app = (function () {
     // (11:0) {#if visible}
     function create_if_block(ctx) {
     	let p;
-    	let p_transition;
+    	let p_intro;
+    	let p_outro;
     	let current;
 
     	const block = {
     		c: function create() {
     			p = element("p");
     			p.textContent = "Fades in and out";
-    			add_location(p, file, 11, 2, 180);
+    			add_location(p, file, 11, 2, 186);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
@@ -617,20 +640,21 @@ var app = (function () {
     			if (current) return;
 
     			add_render_callback(() => {
-    				if (!p_transition) p_transition = create_bidirectional_transition(p, fly, { y: 200, duration: 2000 }, true);
-    				p_transition.run(1);
+    				if (p_outro) p_outro.end(1);
+    				if (!p_intro) p_intro = create_in_transition(p, fly, { y: 200, duration: 2000 });
+    				p_intro.start();
     			});
 
     			current = true;
     		},
     		o: function outro(local) {
-    			if (!p_transition) p_transition = create_bidirectional_transition(p, fly, { y: 200, duration: 2000 }, false);
-    			p_transition.run(0);
+    			if (p_intro) p_intro.invalidate();
+    			p_outro = create_out_transition(p, fade, {});
     			current = false;
     		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(p);
-    			if (detaching && p_transition) p_transition.end();
+    			if (detaching && p_outro) p_outro.end();
     		}
     	};
 
@@ -665,8 +689,8 @@ var app = (function () {
     			if (if_block) if_block.c();
     			if_block_anchor = empty();
     			attr_dev(input, "type", "checkbox");
-    			add_location(input, file, 6, 2, 95);
-    			add_location(label, file, 5, 0, 85);
+    			add_location(input, file, 6, 2, 101);
+    			add_location(label, file, 5, 0, 91);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -757,7 +781,7 @@ var app = (function () {
     		$$invalidate(0, visible);
     	}
 
-    	$$self.$capture_state = () => ({ fly, visible });
+    	$$self.$capture_state = () => ({ fly, fade, visible });
 
     	$$self.$inject_state = $$props => {
     		if ("visible" in $$props) $$invalidate(0, visible = $$props.visible);
