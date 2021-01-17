@@ -1,6 +1,7 @@
 <script>
   import { quintOut } from 'svelte/easing';
   import { crossfade } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
 
   const [send, receive] = crossfade({
     duration: d => Math.sqrt(d * 200),
@@ -25,7 +26,7 @@
   let todos = [
     { id: uid++, done: false, description: 'write some docs' },
     { id: uid++, done: false, description: 'start writing blog post' },
-    { id: uid++, done: true, description: 'buy some milk' },
+    { id: uid++, done: false, description: 'buy some milk' },
     { id: uid++, done: false, description: 'mow the lawn' },
     { id: uid++, done: false, description: 'feed the turtle' },
     { id: uid++, done: false, description: 'fix some bugs' },
@@ -62,7 +63,10 @@
   <div class="left">
     <h2>todo</h2>
     {#each todos.filter(t => !t.done) as todo (todo.id)}
-      <label in:receive={{ key: todo.id }} out:send={{ key: todo.id }}>
+      <label
+        in:receive={{ key: todo.id }}
+        out:send={{ key: todo.id }}
+        animate:flip>
         <input type="checkbox" on:change={() => mark(todo, true)} />
         {todo.description}
         <button on:click={() => remove(todo)}>remove</button>
@@ -76,7 +80,8 @@
       <label
         class="done"
         in:receive={{ key: todo.id }}
-        out:send={{ key: todo.id }}>
+        out:send={{ key: todo.id }}
+        animate:flip>
         <input type="checkbox" checked on:change={() => mark(todo, false)} />
         {todo.description}
         <button on:click={() => remove(todo)}>remove</button>
