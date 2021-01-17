@@ -248,81 +248,148 @@ var app = (function () {
         node.dispatchEvent(custom_event(`${direction ? 'intro' : 'outro'}${kind}`));
     }
     const outroing = new Set();
+    let outros;
+    function group_outros() {
+        outros = {
+            r: 0,
+            c: [],
+            p: outros // parent group
+        };
+    }
+    function check_outros() {
+        if (!outros.r) {
+            run_all(outros.c);
+        }
+        outros = outros.p;
+    }
     function transition_in(block, local) {
         if (block && block.i) {
             outroing.delete(block);
             block.i(local);
         }
     }
+    function transition_out(block, local, detach, callback) {
+        if (block && block.o) {
+            if (outroing.has(block))
+                return;
+            outroing.add(block);
+            outros.c.push(() => {
+                outroing.delete(block);
+                if (callback) {
+                    if (detach)
+                        block.d(1);
+                    callback();
+                }
+            });
+            block.o(local);
+        }
+    }
     const null_transition = { duration: 0 };
-    function create_in_transition(node, fn, params) {
+    function create_bidirectional_transition(node, fn, params, intro) {
         let config = fn(node, params);
-        let running = false;
-        let animation_name;
-        let task;
-        let uid = 0;
-        function cleanup() {
+        let t = intro ? 0 : 1;
+        let running_program = null;
+        let pending_program = null;
+        let animation_name = null;
+        function clear_animation() {
             if (animation_name)
                 delete_rule(node, animation_name);
         }
-        function go() {
-            const { delay = 0, duration = 300, easing = identity, tick = noop, css } = config || null_transition;
-            if (css)
-                animation_name = create_rule(node, 0, 1, duration, delay, easing, css, uid++);
-            tick(0, 1);
-            const start_time = now() + delay;
-            const end_time = start_time + duration;
-            if (task)
-                task.abort();
-            running = true;
-            add_render_callback(() => dispatch(node, true, 'start'));
-            task = loop(now => {
-                if (running) {
-                    if (now >= end_time) {
-                        tick(1, 0);
-                        dispatch(node, true, 'end');
-                        cleanup();
-                        return running = false;
-                    }
-                    if (now >= start_time) {
-                        const t = easing((now - start_time) / duration);
-                        tick(t, 1 - t);
-                    }
-                }
-                return running;
-            });
+        function init(program, duration) {
+            const d = program.b - t;
+            duration *= Math.abs(d);
+            return {
+                a: t,
+                b: program.b,
+                d,
+                duration,
+                start: program.start,
+                end: program.start + duration,
+                group: program.group
+            };
         }
-        let started = false;
+        function go(b) {
+            const { delay = 0, duration = 300, easing = identity, tick = noop, css } = config || null_transition;
+            const program = {
+                start: now() + delay,
+                b
+            };
+            if (!b) {
+                // @ts-ignore todo: improve typings
+                program.group = outros;
+                outros.r += 1;
+            }
+            if (running_program || pending_program) {
+                pending_program = program;
+            }
+            else {
+                // if this is an intro, and there's a delay, we need to do
+                // an initial tick and/or apply CSS animation immediately
+                if (css) {
+                    clear_animation();
+                    animation_name = create_rule(node, t, b, duration, delay, easing, css);
+                }
+                if (b)
+                    tick(0, 1);
+                running_program = init(program, duration);
+                add_render_callback(() => dispatch(node, b, 'start'));
+                loop(now => {
+                    if (pending_program && now > pending_program.start) {
+                        running_program = init(pending_program, duration);
+                        pending_program = null;
+                        dispatch(node, running_program.b, 'start');
+                        if (css) {
+                            clear_animation();
+                            animation_name = create_rule(node, t, running_program.b, running_program.duration, 0, easing, config.css);
+                        }
+                    }
+                    if (running_program) {
+                        if (now >= running_program.end) {
+                            tick(t = running_program.b, 1 - t);
+                            dispatch(node, running_program.b, 'end');
+                            if (!pending_program) {
+                                // we're done
+                                if (running_program.b) {
+                                    // intro — we can tidy up immediately
+                                    clear_animation();
+                                }
+                                else {
+                                    // outro — needs to be coordinated
+                                    if (!--running_program.group.r)
+                                        run_all(running_program.group.c);
+                                }
+                            }
+                            running_program = null;
+                        }
+                        else if (now >= running_program.start) {
+                            const p = now - running_program.start;
+                            t = running_program.a + running_program.d * easing(p / running_program.duration);
+                            tick(t, 1 - t);
+                        }
+                    }
+                    return !!(running_program || pending_program);
+                });
+            }
+        }
         return {
-            start() {
-                if (started)
-                    return;
-                delete_rule(node);
+            run(b) {
                 if (is_function(config)) {
-                    config = config();
-                    wait().then(go);
+                    wait().then(() => {
+                        // @ts-ignore
+                        config = config();
+                        go(b);
+                    });
                 }
                 else {
-                    go();
+                    go(b);
                 }
-            },
-            invalidate() {
-                started = false;
             },
             end() {
-                if (running) {
-                    cleanup();
-                    running = false;
-                }
+                clear_animation();
+                running_program = pending_program = null;
             }
         };
     }
-
-    const globals = (typeof window !== 'undefined'
-        ? window
-        : typeof globalThis !== 'undefined'
-            ? globalThis
-            : global);
     function mount_component(component, target, anchor) {
         const { fragment, on_mount, on_destroy, after_update } = component.$$;
         fragment && fragment.m(target, anchor);
@@ -480,6 +547,13 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
+    }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
             if (!~keys.indexOf(slot_key)) {
@@ -507,36 +581,79 @@ var app = (function () {
         $inject_state() { }
     }
 
-    /* src\App.svelte generated by Svelte v3.31.2 */
+    function cubicOut(t) {
+        const f = t - 1.0;
+        return f * f * f + 1.0;
+    }
 
-    const { Error: Error_1 } = globals;
+    function fly(node, { delay = 0, duration = 400, easing = cubicOut, x = 0, y = 0, opacity = 0 }) {
+        const style = getComputedStyle(node);
+        const target_opacity = +style.opacity;
+        const transform = style.transform === 'none' ? '' : style.transform;
+        const od = target_opacity * (1 - opacity);
+        return {
+            delay,
+            duration,
+            easing,
+            css: (t, u) => `
+			transform: ${transform} translate(${(1 - t) * x}px, ${(1 - t) * y}px);
+			opacity: ${target_opacity - (od * u)}`
+        };
+    }
+
+    /* src\App.svelte generated by Svelte v3.31.2 */
     const file = "src\\App.svelte";
 
-    // (33:0) {#if visible}
+    // (15:0) {#if visible}
     function create_if_block(ctx) {
     	let p;
-    	let p_intro;
+    	let p_transition;
+    	let current;
+    	let mounted;
+    	let dispose;
 
     	const block = {
     		c: function create() {
     			p = element("p");
-    			p.textContent = "The quick silver firefox jumps over the lazy dog.";
-    			add_location(p, file, 33, 2, 663);
+    			p.textContent = "Flies in and out";
+    			add_location(p, file, 15, 2, 235);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
-    		},
-    		i: function intro(local) {
-    			if (!p_intro) {
-    				add_render_callback(() => {
-    					p_intro = create_in_transition(p, typewriter, {});
-    					p_intro.start();
-    				});
+    			current = true;
+
+    			if (!mounted) {
+    				dispose = [
+    					listen_dev(p, "introstart", /*introstart_handler*/ ctx[3], false, false, false),
+    					listen_dev(p, "outrostart", /*outrostart_handler*/ ctx[4], false, false, false),
+    					listen_dev(p, "introend", /*introend_handler*/ ctx[5], false, false, false),
+    					listen_dev(p, "outroend", /*outroend_handler*/ ctx[6], false, false, false)
+    				];
+
+    				mounted = true;
     			}
     		},
-    		o: noop,
+    		p: noop,
+    		i: function intro(local) {
+    			if (current) return;
+
+    			add_render_callback(() => {
+    				if (!p_transition) p_transition = create_bidirectional_transition(p, fly, { y: 200, duration: 2000 }, true);
+    				p_transition.run(1);
+    			});
+
+    			current = true;
+    		},
+    		o: function outro(local) {
+    			if (!p_transition) p_transition = create_bidirectional_transition(p, fly, { y: 200, duration: 2000 }, false);
+    			p_transition.run(0);
+    			current = false;
+    		},
     		d: function destroy(detaching) {
     			if (detaching) detach_dev(p);
+    			if (detaching && p_transition) p_transition.end();
+    			mounted = false;
+    			run_all(dispose);
     		}
     	};
 
@@ -544,7 +661,7 @@ var app = (function () {
     		block,
     		id: create_if_block.name,
     		type: "if",
-    		source: "(33:0) {#if visible}",
+    		source: "(15:0) {#if visible}",
     		ctx
     	});
 
@@ -552,51 +669,70 @@ var app = (function () {
     }
 
     function create_fragment(ctx) {
-    	let label;
-    	let input;
+    	let p;
     	let t0;
     	let t1;
+    	let t2;
+    	let label;
+    	let input;
+    	let t3;
+    	let t4;
     	let if_block_anchor;
+    	let current;
     	let mounted;
     	let dispose;
     	let if_block = /*visible*/ ctx[0] && create_if_block(ctx);
 
     	const block = {
     		c: function create() {
+    			p = element("p");
+    			t0 = text("status: ");
+    			t1 = text(/*status*/ ctx[1]);
+    			t2 = space();
     			label = element("label");
     			input = element("input");
-    			t0 = text("\n  visible");
-    			t1 = space();
+    			t3 = text("\n  visible");
+    			t4 = space();
     			if (if_block) if_block.c();
     			if_block_anchor = empty();
+    			add_location(p, file, 7, 0, 115);
     			attr_dev(input, "type", "checkbox");
-    			add_location(input, file, 28, 2, 578);
-    			add_location(label, file, 27, 0, 568);
+    			add_location(input, file, 10, 2, 150);
+    			add_location(label, file, 9, 0, 140);
     		},
     		l: function claim(nodes) {
-    			throw new Error_1("options.hydrate only works if the component was compiled with the `hydratable: true` option");
+    			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    			append_dev(p, t0);
+    			append_dev(p, t1);
+    			insert_dev(target, t2, anchor);
     			insert_dev(target, label, anchor);
     			append_dev(label, input);
     			input.checked = /*visible*/ ctx[0];
-    			append_dev(label, t0);
-    			insert_dev(target, t1, anchor);
+    			append_dev(label, t3);
+    			insert_dev(target, t4, anchor);
     			if (if_block) if_block.m(target, anchor);
     			insert_dev(target, if_block_anchor, anchor);
+    			current = true;
 
     			if (!mounted) {
-    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[1]);
+    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[2]);
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
+    			if (!current || dirty & /*status*/ 2) set_data_dev(t1, /*status*/ ctx[1]);
+
     			if (dirty & /*visible*/ 1) {
     				input.checked = /*visible*/ ctx[0];
     			}
 
     			if (/*visible*/ ctx[0]) {
     				if (if_block) {
+    					if_block.p(ctx, dirty);
+
     					if (dirty & /*visible*/ 1) {
     						transition_in(if_block, 1);
     					}
@@ -607,17 +743,29 @@ var app = (function () {
     					if_block.m(if_block_anchor.parentNode, if_block_anchor);
     				}
     			} else if (if_block) {
-    				if_block.d(1);
-    				if_block = null;
+    				group_outros();
+
+    				transition_out(if_block, 1, 1, () => {
+    					if_block = null;
+    				});
+
+    				check_outros();
     			}
     		},
     		i: function intro(local) {
+    			if (current) return;
     			transition_in(if_block);
+    			current = true;
     		},
-    		o: noop,
+    		o: function outro(local) {
+    			transition_out(if_block);
+    			current = false;
+    		},
     		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    			if (detaching) detach_dev(t2);
     			if (detaching) detach_dev(label);
-    			if (detaching) detach_dev(t1);
+    			if (detaching) detach_dev(t4);
     			if (if_block) if_block.d(detaching);
     			if (detaching) detach_dev(if_block_anchor);
     			mounted = false;
@@ -636,29 +784,11 @@ var app = (function () {
     	return block;
     }
 
-    function typewriter(node, { speed = 10 }) {
-    	const valid = node.childNodes.length === 1 && node.childNodes[0].nodeType === Node.TEXT_NODE;
-
-    	if (!valid) {
-    		throw new Error(`This transition only works on elements with a single text node child`);
-    	}
-
-    	const text = node.textContent;
-    	const duration = text.length * speed;
-
-    	return {
-    		duration,
-    		tick: t => {
-    			const i = ~~(text.length * t);
-    			node.textContent = text.slice(0, i);
-    		}
-    	};
-    }
-
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let visible = false;
+    	let visible = true;
+    	let status = "waiting...";
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
@@ -670,17 +800,30 @@ var app = (function () {
     		$$invalidate(0, visible);
     	}
 
-    	$$self.$capture_state = () => ({ visible, typewriter });
+    	const introstart_handler = () => $$invalidate(1, status = "intro started");
+    	const outrostart_handler = () => $$invalidate(1, status = "outro started");
+    	const introend_handler = () => $$invalidate(1, status = "intro ended");
+    	const outroend_handler = () => $$invalidate(1, status = "outro ended");
+    	$$self.$capture_state = () => ({ fly, visible, status });
 
     	$$self.$inject_state = $$props => {
     		if ("visible" in $$props) $$invalidate(0, visible = $$props.visible);
+    		if ("status" in $$props) $$invalidate(1, status = $$props.status);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [visible, input_change_handler];
+    	return [
+    		visible,
+    		status,
+    		input_change_handler,
+    		introstart_handler,
+    		outrostart_handler,
+    		introend_handler,
+    		outroend_handler
+    	];
     }
 
     class App extends SvelteComponentDev {
