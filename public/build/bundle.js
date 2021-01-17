@@ -574,13 +574,23 @@ var app = (function () {
         $inject_state() { }
     }
 
-    function fade(node, { delay = 0, duration = 400, easing = identity }) {
-        const o = +getComputedStyle(node).opacity;
+    function cubicOut(t) {
+        const f = t - 1.0;
+        return f * f * f + 1.0;
+    }
+
+    function fly(node, { delay = 0, duration = 400, easing = cubicOut, x = 0, y = 0, opacity = 0 }) {
+        const style = getComputedStyle(node);
+        const target_opacity = +style.opacity;
+        const transform = style.transform === 'none' ? '' : style.transform;
+        const od = target_opacity * (1 - opacity);
         return {
             delay,
             duration,
             easing,
-            css: t => `opacity: ${t * o}`
+            css: (t, u) => `
+			transform: ${transform} translate(${(1 - t) * x}px, ${(1 - t) * y}px);
+			opacity: ${target_opacity - (od * u)}`
         };
     }
 
@@ -597,7 +607,7 @@ var app = (function () {
     		c: function create() {
     			p = element("p");
     			p.textContent = "Fades in and out";
-    			add_location(p, file, 11, 2, 181);
+    			add_location(p, file, 11, 2, 180);
     		},
     		m: function mount(target, anchor) {
     			insert_dev(target, p, anchor);
@@ -607,14 +617,14 @@ var app = (function () {
     			if (current) return;
 
     			add_render_callback(() => {
-    				if (!p_transition) p_transition = create_bidirectional_transition(p, fade, {}, true);
+    				if (!p_transition) p_transition = create_bidirectional_transition(p, fly, { y: 200, duration: 2000 }, true);
     				p_transition.run(1);
     			});
 
     			current = true;
     		},
     		o: function outro(local) {
-    			if (!p_transition) p_transition = create_bidirectional_transition(p, fade, {}, false);
+    			if (!p_transition) p_transition = create_bidirectional_transition(p, fly, { y: 200, duration: 2000 }, false);
     			p_transition.run(0);
     			current = false;
     		},
@@ -655,8 +665,8 @@ var app = (function () {
     			if (if_block) if_block.c();
     			if_block_anchor = empty();
     			attr_dev(input, "type", "checkbox");
-    			add_location(input, file, 6, 2, 96);
-    			add_location(label, file, 5, 0, 86);
+    			add_location(input, file, 6, 2, 95);
+    			add_location(label, file, 5, 0, 85);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
@@ -747,7 +757,7 @@ var app = (function () {
     		$$invalidate(0, visible);
     	}
 
-    	$$self.$capture_state = () => ({ fade, visible });
+    	$$self.$capture_state = () => ({ fly, visible });
 
     	$$self.$inject_state = $$props => {
     		if ("visible" in $$props) $$invalidate(0, visible = $$props.visible);
