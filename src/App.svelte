@@ -1,65 +1,21 @@
 <script>
-  import { spring } from 'svelte/motion';
-  import { pannable } from './pannable';
+  import { longpress } from './longpress.js';
 
-  const coords = spring(
-    { x: 0, y: 0 },
-    {
-      stiffness: 0.2,
-      damping: 0.4,
-    },
-  );
-
-  function handlePanStart() {
-    coords.stiffness = coords.damping = 1;
-  }
-
-  function handlePanMove(event) {
-    coords.update($coords => ({
-      x: $coords.x + event.detail.dx,
-      y: $coords.y + event.detail.dy,
-    }));
-  }
-
-  function handlePanEnd(event) {
-    coords.stiffness = 0.2;
-    coords.damping = 0.4;
-    coords.set({ x: 0, y: 0 });
-  }
+  let pressed = false;
+  let duration = 2000;
 </script>
 
-<div
-  class="box"
-  use:pannable
-  on:panstart={handlePanStart}
-  on:panmove={handlePanMove}
-  on:panend={handlePanEnd}
-  style="transform:
-		translate({$coords.x}px,{$coords.y}px)
-		rotate({$coords.x *
-    0.2}deg)"
-/>
-Actions are essentially element-level lifecycle functions. They're useful for things
-like:
+<label>
+  <input type="range" bind:value={duration} max={2000} step={100} />
+  {duration}ms
+</label>
 
-<ul>
-  <li>interfacing with third-party libraries</li>
-  <li>lazy-loaded images</li>
-  <li>tooltips</li>
-  <li>adding custom event handlers</li>
-</ul>
+<button
+  use:longpress={duration}
+  on:longpress={() => (pressed = true)}
+  on:mouseenter={() => (pressed = false)}>press and hold</button
+>
 
-<style>
-  .box {
-    --width: 100px;
-    --height: 100px;
-    position: absolute;
-    width: var(--width);
-    height: var(--height);
-    left: calc(50% - var(--width) / 2);
-    top: calc(50% - var(--height) / 2);
-    border-radius: 4px;
-    background-color: #ff3e00;
-    cursor: move;
-  }
-</style>
+{#if pressed}
+  <p>congratulations, you pressed and held for {duration}ms</p>
+{/if}

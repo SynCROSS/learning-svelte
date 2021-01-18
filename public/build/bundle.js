@@ -27,58 +27,8 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
-    function validate_store(store, name) {
-        if (store != null && typeof store.subscribe !== 'function') {
-            throw new Error(`'${name}' is not a store with a 'subscribe' method`);
-        }
-    }
-    function subscribe(store, ...callbacks) {
-        if (store == null) {
-            return noop;
-        }
-        const unsub = store.subscribe(...callbacks);
-        return unsub.unsubscribe ? () => unsub.unsubscribe() : unsub;
-    }
-    function component_subscribe(component, store, callback) {
-        component.$$.on_destroy.push(subscribe(store, callback));
-    }
     function action_destroyer(action_result) {
         return action_result && is_function(action_result.destroy) ? action_result.destroy : noop;
-    }
-
-    const is_client = typeof window !== 'undefined';
-    let now = is_client
-        ? () => window.performance.now()
-        : () => Date.now();
-    let raf = is_client ? cb => requestAnimationFrame(cb) : noop;
-
-    const tasks = new Set();
-    function run_tasks(now) {
-        tasks.forEach(task => {
-            if (!task.c(now)) {
-                tasks.delete(task);
-                task.f();
-            }
-        });
-        if (tasks.size !== 0)
-            raf(run_tasks);
-    }
-    /**
-     * Creates a new task that runs on each raf frame
-     * until it returns a falsy value or is aborted
-     */
-    function loop(callback) {
-        let task;
-        if (tasks.size === 0)
-            raf(run_tasks);
-        return {
-            promise: new Promise(fulfill => {
-                tasks.add(task = { c: callback, f: fulfill });
-            }),
-            abort() {
-                tasks.delete(task);
-            }
-        };
     }
 
     function append(target, node) {
@@ -99,6 +49,9 @@ var app = (function () {
     function space() {
         return text(' ');
     }
+    function empty() {
+        return text('');
+    }
     function listen(node, event, handler, options) {
         node.addEventListener(event, handler, options);
         return () => node.removeEventListener(event, handler, options);
@@ -109,11 +62,14 @@ var app = (function () {
         else if (node.getAttribute(attribute) !== value)
             node.setAttribute(attribute, value);
     }
+    function to_number(value) {
+        return value === '' ? null : +value;
+    }
     function children(element) {
         return Array.from(element.childNodes);
     }
-    function set_style(node, key, value, important) {
-        node.style.setProperty(key, value, important ? 'important' : '');
+    function set_input_value(input, value) {
+        input.value = value == null ? '' : value;
     }
     function custom_event(type, detail) {
         const e = document.createEvent('CustomEvent');
@@ -353,6 +309,13 @@ var app = (function () {
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
     }
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
+    }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
             if (!~keys.indexOf(slot_key)) {
@@ -380,219 +343,29 @@ var app = (function () {
         $inject_state() { }
     }
 
-    const subscriber_queue = [];
-    /**
-     * Create a `Writable` store that allows both updating and reading by subscription.
-     * @param {*=}value initial value
-     * @param {StartStopNotifier=}start start and stop notifications for subscriptions
-     */
-    function writable(value, start = noop) {
-        let stop;
-        const subscribers = [];
-        function set(new_value) {
-            if (safe_not_equal(value, new_value)) {
-                value = new_value;
-                if (stop) { // store is ready
-                    const run_queue = !subscriber_queue.length;
-                    for (let i = 0; i < subscribers.length; i += 1) {
-                        const s = subscribers[i];
-                        s[1]();
-                        subscriber_queue.push(s, value);
-                    }
-                    if (run_queue) {
-                        for (let i = 0; i < subscriber_queue.length; i += 2) {
-                            subscriber_queue[i][0](subscriber_queue[i + 1]);
-                        }
-                        subscriber_queue.length = 0;
-                    }
-                }
-            }
-        }
-        function update(fn) {
-            set(fn(value));
-        }
-        function subscribe(run, invalidate = noop) {
-            const subscriber = [run, invalidate];
-            subscribers.push(subscriber);
-            if (subscribers.length === 1) {
-                stop = start(set) || noop;
-            }
-            run(value);
-            return () => {
-                const index = subscribers.indexOf(subscriber);
-                if (index !== -1) {
-                    subscribers.splice(index, 1);
-                }
-                if (subscribers.length === 0) {
-                    stop();
-                    stop = null;
-                }
-            };
-        }
-        return { set, update, subscribe };
-    }
+    function longpress(node, duration) {
+      let timer;
 
-    function is_date(obj) {
-        return Object.prototype.toString.call(obj) === '[object Date]';
-    }
+      const handleMousedown = () => {
+        timer = setTimeout(() => {
+          node.dispatchEvent(new CustomEvent('longpress'));
+        }, duration);
+      };
 
-    function tick_spring(ctx, last_value, current_value, target_value) {
-        if (typeof current_value === 'number' || is_date(current_value)) {
-            // @ts-ignore
-            const delta = target_value - current_value;
-            // @ts-ignore
-            const velocity = (current_value - last_value) / (ctx.dt || 1 / 60); // guard div by 0
-            const spring = ctx.opts.stiffness * delta;
-            const damper = ctx.opts.damping * velocity;
-            const acceleration = (spring - damper) * ctx.inv_mass;
-            const d = (velocity + acceleration) * ctx.dt;
-            if (Math.abs(d) < ctx.opts.precision && Math.abs(delta) < ctx.opts.precision) {
-                return target_value; // settled
-            }
-            else {
-                ctx.settled = false; // signal loop to keep ticking
-                // @ts-ignore
-                return is_date(current_value) ?
-                    new Date(current_value.getTime() + d) : current_value + d;
-            }
-        }
-        else if (Array.isArray(current_value)) {
-            // @ts-ignore
-            return current_value.map((_, i) => tick_spring(ctx, last_value[i], current_value[i], target_value[i]));
-        }
-        else if (typeof current_value === 'object') {
-            const next_value = {};
-            for (const k in current_value) {
-                // @ts-ignore
-                next_value[k] = tick_spring(ctx, last_value[k], current_value[k], target_value[k]);
-            }
-            // @ts-ignore
-            return next_value;
-        }
-        else {
-            throw new Error(`Cannot spring ${typeof current_value} values`);
-        }
-    }
-    function spring(value, opts = {}) {
-        const store = writable(value);
-        const { stiffness = 0.15, damping = 0.8, precision = 0.01 } = opts;
-        let last_time;
-        let task;
-        let current_token;
-        let last_value = value;
-        let target_value = value;
-        let inv_mass = 1;
-        let inv_mass_recovery_rate = 0;
-        let cancel_task = false;
-        function set(new_value, opts = {}) {
-            target_value = new_value;
-            const token = current_token = {};
-            if (value == null || opts.hard || (spring.stiffness >= 1 && spring.damping >= 1)) {
-                cancel_task = true; // cancel any running animation
-                last_time = now();
-                last_value = new_value;
-                store.set(value = target_value);
-                return Promise.resolve();
-            }
-            else if (opts.soft) {
-                const rate = opts.soft === true ? .5 : +opts.soft;
-                inv_mass_recovery_rate = 1 / (rate * 60);
-                inv_mass = 0; // infinite mass, unaffected by spring forces
-            }
-            if (!task) {
-                last_time = now();
-                cancel_task = false;
-                task = loop(now => {
-                    if (cancel_task) {
-                        cancel_task = false;
-                        task = null;
-                        return false;
-                    }
-                    inv_mass = Math.min(inv_mass + inv_mass_recovery_rate, 1);
-                    const ctx = {
-                        inv_mass,
-                        opts: spring,
-                        settled: true,
-                        dt: (now - last_time) * 60 / 1000
-                    };
-                    const next_value = tick_spring(ctx, last_value, value, target_value);
-                    last_time = now;
-                    last_value = value;
-                    store.set(value = next_value);
-                    if (ctx.settled) {
-                        task = null;
-                    }
-                    return !ctx.settled;
-                });
-            }
-            return new Promise(fulfil => {
-                task.promise.then(() => {
-                    if (token === current_token)
-                        fulfil();
-                });
-            });
-        }
-        const spring = {
-            set,
-            update: (fn, opts) => set(fn(target_value, value), opts),
-            subscribe: store.subscribe,
-            stiffness,
-            damping,
-            precision
-        };
-        return spring;
-    }
-
-    function pannable(node) {
-      let x;
-      let y;
-
-      function handleMousedown(event) {
-        x = event.clientX;
-        y = event.clientY;
-
-        node.dispatchEvent(
-          new CustomEvent('panstart', {
-            detail: { x, y },
-          }),
-        );
-
-        window.addEventListener('mousemove', handleMousemove);
-        window.addEventListener('mouseup', handleMouseup);
-      }
-
-      function handleMousemove(event) {
-        const dx = event.clientX - x;
-        const dy = event.clientY - y;
-        x = event.clientX;
-        y = event.clientY;
-
-        node.dispatchEvent(
-          new CustomEvent('panmove', {
-            detail: { x, y, dx, dy },
-          }),
-        );
-      }
-
-      function handleMouseup(event) {
-        x = event.clientX;
-        y = event.clientY;
-
-        node.dispatchEvent(
-          new CustomEvent('panend', {
-            detail: { x, y },
-          }),
-        );
-
-        window.removeEventListener('mousemove', handleMousemove);
-        window.removeEventListener('mouseup', handleMouseup);
-      }
+      const handleMouseup = () => {
+        clearTimeout(timer);
+      };
 
       node.addEventListener('mousedown', handleMousedown);
+      node.addEventListener('mouseup', handleMouseup);
 
       return {
+        update(newDuration) {
+          duration = newDuration;
+        },
         destroy() {
           node.removeEventListener('mousedown', handleMousedown);
+          node.removeEventListener('mouseup', handleMouseup);
         },
       };
     }
@@ -600,82 +373,139 @@ var app = (function () {
     /* src\App.svelte generated by Svelte v3.31.2 */
     const file = "src\\App.svelte";
 
-    function create_fragment(ctx) {
-    	let div;
+    // (19:0) {#if pressed}
+    function create_if_block(ctx) {
+    	let p;
     	let t0;
-    	let ul;
-    	let li0;
+    	let t1;
     	let t2;
-    	let li1;
-    	let t4;
-    	let li2;
-    	let t6;
-    	let li3;
-    	let mounted;
-    	let dispose;
 
     	const block = {
     		c: function create() {
-    			div = element("div");
-    			t0 = text("\nActions are essentially element-level lifecycle functions. They're useful for things\nlike:\n\n");
-    			ul = element("ul");
-    			li0 = element("li");
-    			li0.textContent = "interfacing with third-party libraries";
-    			t2 = space();
-    			li1 = element("li");
-    			li1.textContent = "lazy-loaded images";
-    			t4 = space();
-    			li2 = element("li");
-    			li2.textContent = "tooltips";
-    			t6 = space();
-    			li3 = element("li");
-    			li3.textContent = "adding custom event handlers";
-    			attr_dev(div, "class", "box svelte-l7dyul");
-    			set_style(div, "transform", "translate(" + /*$coords*/ ctx[1].x + "px," + /*$coords*/ ctx[1].y + "px)\n\t\trotate(" + /*$coords*/ ctx[1].x * 0.2 + "deg)");
-    			add_location(div, file, 30, 0, 567);
-    			add_location(li0, file, 45, 2, 887);
-    			add_location(li1, file, 46, 2, 937);
-    			add_location(li2, file, 47, 2, 967);
-    			add_location(li3, file, 48, 2, 987);
-    			add_location(ul, file, 44, 0, 880);
+    			p = element("p");
+    			t0 = text("congratulations, you pressed and held for ");
+    			t1 = text(/*duration*/ ctx[1]);
+    			t2 = text("ms");
+    			add_location(p, file, 19, 2, 374);
+    		},
+    		m: function mount(target, anchor) {
+    			insert_dev(target, p, anchor);
+    			append_dev(p, t0);
+    			append_dev(p, t1);
+    			append_dev(p, t2);
+    		},
+    		p: function update(ctx, dirty) {
+    			if (dirty & /*duration*/ 2) set_data_dev(t1, /*duration*/ ctx[1]);
+    		},
+    		d: function destroy(detaching) {
+    			if (detaching) detach_dev(p);
+    		}
+    	};
+
+    	dispatch_dev("SvelteRegisterBlock", {
+    		block,
+    		id: create_if_block.name,
+    		type: "if",
+    		source: "(19:0) {#if pressed}",
+    		ctx
+    	});
+
+    	return block;
+    }
+
+    function create_fragment(ctx) {
+    	let label;
+    	let input;
+    	let t0;
+    	let t1;
+    	let t2;
+    	let t3;
+    	let button;
+    	let longpress_action;
+    	let t5;
+    	let if_block_anchor;
+    	let mounted;
+    	let dispose;
+    	let if_block = /*pressed*/ ctx[0] && create_if_block(ctx);
+
+    	const block = {
+    		c: function create() {
+    			label = element("label");
+    			input = element("input");
+    			t0 = space();
+    			t1 = text(/*duration*/ ctx[1]);
+    			t2 = text("ms");
+    			t3 = space();
+    			button = element("button");
+    			button.textContent = "press and hold";
+    			t5 = space();
+    			if (if_block) if_block.c();
+    			if_block_anchor = empty();
+    			attr_dev(input, "type", "range");
+    			attr_dev(input, "max", 2000);
+    			attr_dev(input, "step", 100);
+    			add_location(input, file, 8, 2, 123);
+    			add_location(label, file, 7, 0, 113);
+    			add_location(button, file, 12, 0, 215);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, div, anchor);
-    			insert_dev(target, t0, anchor);
-    			insert_dev(target, ul, anchor);
-    			append_dev(ul, li0);
-    			append_dev(ul, t2);
-    			append_dev(ul, li1);
-    			append_dev(ul, t4);
-    			append_dev(ul, li2);
-    			append_dev(ul, t6);
-    			append_dev(ul, li3);
+    			insert_dev(target, label, anchor);
+    			append_dev(label, input);
+    			set_input_value(input, /*duration*/ ctx[1]);
+    			append_dev(label, t0);
+    			append_dev(label, t1);
+    			append_dev(label, t2);
+    			insert_dev(target, t3, anchor);
+    			insert_dev(target, button, anchor);
+    			insert_dev(target, t5, anchor);
+    			if (if_block) if_block.m(target, anchor);
+    			insert_dev(target, if_block_anchor, anchor);
 
     			if (!mounted) {
     				dispose = [
-    					action_destroyer(pannable.call(null, div)),
-    					listen_dev(div, "panstart", /*handlePanStart*/ ctx[2], false, false, false),
-    					listen_dev(div, "panmove", /*handlePanMove*/ ctx[3], false, false, false),
-    					listen_dev(div, "panend", /*handlePanEnd*/ ctx[4], false, false, false)
+    					listen_dev(input, "change", /*input_change_input_handler*/ ctx[2]),
+    					listen_dev(input, "input", /*input_change_input_handler*/ ctx[2]),
+    					action_destroyer(longpress_action = longpress.call(null, button, /*duration*/ ctx[1])),
+    					listen_dev(button, "longpress", /*longpress_handler*/ ctx[3], false, false, false),
+    					listen_dev(button, "mouseenter", /*mouseenter_handler*/ ctx[4], false, false, false)
     				];
 
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*$coords*/ 2) {
-    				set_style(div, "transform", "translate(" + /*$coords*/ ctx[1].x + "px," + /*$coords*/ ctx[1].y + "px)\n\t\trotate(" + /*$coords*/ ctx[1].x * 0.2 + "deg)");
+    			if (dirty & /*duration*/ 2) {
+    				set_input_value(input, /*duration*/ ctx[1]);
+    			}
+
+    			if (dirty & /*duration*/ 2) set_data_dev(t1, /*duration*/ ctx[1]);
+    			if (longpress_action && is_function(longpress_action.update) && dirty & /*duration*/ 2) longpress_action.update.call(null, /*duration*/ ctx[1]);
+
+    			if (/*pressed*/ ctx[0]) {
+    				if (if_block) {
+    					if_block.p(ctx, dirty);
+    				} else {
+    					if_block = create_if_block(ctx);
+    					if_block.c();
+    					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+    				}
+    			} else if (if_block) {
+    				if_block.d(1);
+    				if_block = null;
     			}
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(div);
-    			if (detaching) detach_dev(t0);
-    			if (detaching) detach_dev(ul);
+    			if (detaching) detach_dev(label);
+    			if (detaching) detach_dev(t3);
+    			if (detaching) detach_dev(button);
+    			if (detaching) detach_dev(t5);
+    			if (if_block) if_block.d(detaching);
+    			if (detaching) detach_dev(if_block_anchor);
     			mounted = false;
     			run_all(dispose);
     		}
@@ -693,47 +523,41 @@ var app = (function () {
     }
 
     function instance($$self, $$props, $$invalidate) {
-    	let $coords;
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	const coords = spring({ x: 0, y: 0 }, { stiffness: 0.2, damping: 0.4 });
-    	validate_store(coords, "coords");
-    	component_subscribe($$self, coords, value => $$invalidate(1, $coords = value));
-
-    	function handlePanStart() {
-    		$$invalidate(0, coords.stiffness = $$invalidate(0, coords.damping = 1, coords), coords);
-    	}
-
-    	function handlePanMove(event) {
-    		coords.update($coords => ({
-    			x: $coords.x + event.detail.dx,
-    			y: $coords.y + event.detail.dy
-    		}));
-    	}
-
-    	function handlePanEnd(event) {
-    		$$invalidate(0, coords.stiffness = 0.2, coords);
-    		$$invalidate(0, coords.damping = 0.4, coords);
-    		coords.set({ x: 0, y: 0 });
-    	}
-
+    	let pressed = false;
+    	let duration = 2000;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	$$self.$capture_state = () => ({
-    		spring,
-    		pannable,
-    		coords,
-    		handlePanStart,
-    		handlePanMove,
-    		handlePanEnd,
-    		$coords
-    	});
+    	function input_change_input_handler() {
+    		duration = to_number(this.value);
+    		$$invalidate(1, duration);
+    	}
 
-    	return [coords, $coords, handlePanStart, handlePanMove, handlePanEnd];
+    	const longpress_handler = () => $$invalidate(0, pressed = true);
+    	const mouseenter_handler = () => $$invalidate(0, pressed = false);
+    	$$self.$capture_state = () => ({ longpress, pressed, duration });
+
+    	$$self.$inject_state = $$props => {
+    		if ("pressed" in $$props) $$invalidate(0, pressed = $$props.pressed);
+    		if ("duration" in $$props) $$invalidate(1, duration = $$props.duration);
+    	};
+
+    	if ($$props && "$$inject" in $$props) {
+    		$$self.$inject_state($$props.$$inject);
+    	}
+
+    	return [
+    		pressed,
+    		duration,
+    		input_change_input_handler,
+    		longpress_handler,
+    		mouseenter_handler
+    	];
     }
 
     class App extends SvelteComponentDev {
