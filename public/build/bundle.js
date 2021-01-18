@@ -27,6 +27,10 @@ var app = (function () {
     function is_empty(obj) {
         return Object.keys(obj).length === 0;
     }
+
+    function append(target, node) {
+        target.appendChild(node);
+    }
     function insert(target, node, anchor) {
         target.insertBefore(node, anchor || null);
     }
@@ -264,6 +268,10 @@ var app = (function () {
     function dispatch_dev(type, detail) {
         document.dispatchEvent(custom_event(type, Object.assign({ version: '3.31.2' }, detail)));
     }
+    function append_dev(target, node) {
+        dispatch_dev('SvelteDOMInsert', { target, node });
+        append(target, node);
+    }
     function insert_dev(target, node, anchor) {
         dispatch_dev('SvelteDOMInsert', { target, node, anchor });
         insert(target, node, anchor);
@@ -291,6 +299,13 @@ var app = (function () {
             dispatch_dev('SvelteDOMRemoveAttribute', { node, attribute });
         else
             dispatch_dev('SvelteDOMSetAttribute', { node, attribute, value });
+    }
+    function set_data_dev(text, data) {
+        data = '' + data;
+        if (text.wholeText === data)
+            return;
+        dispatch_dev('SvelteDOMSetData', { node: text, data });
+        text.data = data;
     }
     function validate_slots(name, slot, keys) {
         for (const slot_key of Object.keys(slot)) {
@@ -324,77 +339,73 @@ var app = (function () {
     const file = "src\\App.svelte";
 
     function create_fragment(ctx) {
-    	let button0;
+    	let label;
+    	let input;
+    	let t0;
     	let t1;
-    	let button1;
+    	let div;
+    	let t2;
+    	let t3_value = (/*big*/ ctx[0] ? "big" : "small") + "";
     	let t3;
-    	let button2;
+    	let t4;
     	let mounted;
     	let dispose;
 
     	const block = {
     		c: function create() {
-    			button0 = element("button");
-    			button0.textContent = "foo";
+    			label = element("label");
+    			input = element("input");
+    			t0 = text("\n  big");
     			t1 = space();
-    			button1 = element("button");
-    			button1.textContent = "bar";
-    			t3 = space();
-    			button2 = element("button");
-    			button2.textContent = "baz";
-    			attr_dev(button0, "class", "svelte-1pojf5z");
-    			toggle_class(button0, "selected", /*current*/ ctx[0] === "foo");
-    			add_location(button0, file, 4, 0, 43);
-    			attr_dev(button1, "class", "svelte-1pojf5z");
-    			toggle_class(button1, "selected", /*current*/ ctx[0] === "bar");
-    			add_location(button1, file, 8, 0, 139);
-    			attr_dev(button2, "class", "svelte-1pojf5z");
-    			toggle_class(button2, "selected", /*current*/ ctx[0] === "baz");
-    			add_location(button2, file, 12, 0, 235);
+    			div = element("div");
+    			t2 = text("some ");
+    			t3 = text(t3_value);
+    			t4 = text(" text");
+    			attr_dev(input, "type", "checkbox");
+    			add_location(input, file, 5, 2, 49);
+    			add_location(label, file, 4, 0, 39);
+    			attr_dev(div, "class", "svelte-wtb4ej");
+    			toggle_class(div, "big", /*big*/ ctx[0]);
+    			add_location(div, file, 9, 0, 110);
     		},
     		l: function claim(nodes) {
     			throw new Error("options.hydrate only works if the component was compiled with the `hydratable: true` option");
     		},
     		m: function mount(target, anchor) {
-    			insert_dev(target, button0, anchor);
+    			insert_dev(target, label, anchor);
+    			append_dev(label, input);
+    			input.checked = /*big*/ ctx[0];
+    			append_dev(label, t0);
     			insert_dev(target, t1, anchor);
-    			insert_dev(target, button1, anchor);
-    			insert_dev(target, t3, anchor);
-    			insert_dev(target, button2, anchor);
+    			insert_dev(target, div, anchor);
+    			append_dev(div, t2);
+    			append_dev(div, t3);
+    			append_dev(div, t4);
 
     			if (!mounted) {
-    				dispose = [
-    					listen_dev(button0, "click", /*click_handler*/ ctx[1], false, false, false),
-    					listen_dev(button1, "click", /*click_handler_1*/ ctx[2], false, false, false),
-    					listen_dev(button2, "click", /*click_handler_2*/ ctx[3], false, false, false)
-    				];
-
+    				dispose = listen_dev(input, "change", /*input_change_handler*/ ctx[1]);
     				mounted = true;
     			}
     		},
     		p: function update(ctx, [dirty]) {
-    			if (dirty & /*current*/ 1) {
-    				toggle_class(button0, "selected", /*current*/ ctx[0] === "foo");
+    			if (dirty & /*big*/ 1) {
+    				input.checked = /*big*/ ctx[0];
     			}
 
-    			if (dirty & /*current*/ 1) {
-    				toggle_class(button1, "selected", /*current*/ ctx[0] === "bar");
-    			}
+    			if (dirty & /*big*/ 1 && t3_value !== (t3_value = (/*big*/ ctx[0] ? "big" : "small") + "")) set_data_dev(t3, t3_value);
 
-    			if (dirty & /*current*/ 1) {
-    				toggle_class(button2, "selected", /*current*/ ctx[0] === "baz");
+    			if (dirty & /*big*/ 1) {
+    				toggle_class(div, "big", /*big*/ ctx[0]);
     			}
     		},
     		i: noop,
     		o: noop,
     		d: function destroy(detaching) {
-    			if (detaching) detach_dev(button0);
+    			if (detaching) detach_dev(label);
     			if (detaching) detach_dev(t1);
-    			if (detaching) detach_dev(button1);
-    			if (detaching) detach_dev(t3);
-    			if (detaching) detach_dev(button2);
+    			if (detaching) detach_dev(div);
     			mounted = false;
-    			run_all(dispose);
+    			dispose();
     		}
     	};
 
@@ -412,27 +423,29 @@ var app = (function () {
     function instance($$self, $$props, $$invalidate) {
     	let { $$slots: slots = {}, $$scope } = $$props;
     	validate_slots("App", slots, []);
-    	let current = "foo";
+    	let big = false;
     	const writable_props = [];
 
     	Object.keys($$props).forEach(key => {
     		if (!~writable_props.indexOf(key) && key.slice(0, 2) !== "$$") console.warn(`<App> was created with unknown prop '${key}'`);
     	});
 
-    	const click_handler = () => $$invalidate(0, current = "foo");
-    	const click_handler_1 = () => $$invalidate(0, current = "bar");
-    	const click_handler_2 = () => $$invalidate(0, current = "baz");
-    	$$self.$capture_state = () => ({ current });
+    	function input_change_handler() {
+    		big = this.checked;
+    		$$invalidate(0, big);
+    	}
+
+    	$$self.$capture_state = () => ({ big });
 
     	$$self.$inject_state = $$props => {
-    		if ("current" in $$props) $$invalidate(0, current = $$props.current);
+    		if ("big" in $$props) $$invalidate(0, big = $$props.big);
     	};
 
     	if ($$props && "$$inject" in $$props) {
     		$$self.$inject_state($$props.$$inject);
     	}
 
-    	return [current, click_handler, click_handler_1, click_handler_2];
+    	return [big, input_change_handler];
     }
 
     class App extends SvelteComponentDev {
