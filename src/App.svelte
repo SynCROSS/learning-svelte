@@ -1,5 +1,8 @@
 <script>
-  import Box from './Box.svelte';
+  import ContactCard from './ContactCard.svelte';
 </script>
 
-<Box />
+<ContactCard>
+  <span slot="name">SynCROSS</span>
+  <span slot="email">kuuhaku3125@gmail.com</span>
+</ContactCard>
