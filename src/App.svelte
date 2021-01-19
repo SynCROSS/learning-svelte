@@ -1,18 +1,8 @@
 <script>
-  let big = false;
+  import Box from './Box.svelte';
 </script>
 
-<label>
-  <input type="checkbox" bind:checked={big} />
-  big
-</label>
-
-<div class:big>
-  some {big ? 'big' : 'small'} text
-</div>
-
-<style>
-  .big {
-    font-size: 4em;
-  }
-</style>
+<Box>
+  <h1>Hello!</h1>
+  <p>This is the Box. It can contain anything.</p>
+</Box>
