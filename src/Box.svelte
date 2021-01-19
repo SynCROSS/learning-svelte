@@ -1,5 +1,7 @@
 <div class="box">
-  <slot />
+  <slot>
+    <em>No Content</em>
+  </slot>
 </div>
 
 <style>
