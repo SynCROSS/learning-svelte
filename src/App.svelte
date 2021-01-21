@@ -1,47 +1,31 @@
 <script>
-  import Project from './Project.svelte';
-  import Comment from './Comment.svelte';
+  import Hoverable from './Hoverable.svelte';
 </script>
 
-<h1>Projects</h1>
+<Hoverable let:hovering={active}>
+  <div class:active>
+    {#if active}
+      <p>I am being hovered upon.</p>
+    {:else}
+      <p>Hover over me!</p>
+    {/if}
+  </div>
+</Hoverable>
 
-<ul>
-  <li>
-    <Project title="Add Typescript support" tasksCompleted={25} totalTasks={57}>
-      <div slot="comments">
-        <Comment name="Ecma Script" postedAt={new Date('2020-08-17T14:12:23')}>
-          <p>Those interface tests are now passing.</p>
-        </Comment>
-      </div>
-    </Project>
-  </li>
-  <li>
-    <Project title="Update documentation" tasksCompleted={18} totalTasks={21} />
-  </li>
-</ul>
+<p>
+  Named slots can also have props; use the let directive on an element with a
+  slot="..." attribute, instead of on the component itself.
+</p>
 
 <style>
-  h1 {
-    font-weight: 300;
-    margin: 0 1rem;
+  div {
+    padding: 1em;
+    margin: 0 0 1em 0;
+    background-color: #eee;
   }
 
-  ul {
-    list-style: none;
-    padding: 0;
-    margin: 0.5rem;
-    display: flex;
-  }
-
-  @media (max-width: 600px) {
-    ul {
-      flex-direction: column;
-    }
-  }
-
-  li {
-    padding: 0.5rem;
-    flex: 1 1 50%;
-    min-width: 200px;
+  .active {
+    background-color: #dc143c;
+    color: white;
   }
 </style>
