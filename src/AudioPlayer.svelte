@@ -1,8 +1,17 @@
 <script context="module">
-  let current;
+  const elements = new Set();
+
+  // * You can't have a default export, because the component is the default export.
+  export function stopAll() {
+    elements.forEach(element => {
+      element.pause();
+    });
+  }
 </script>
 
 <script>
+  import { onMount } from 'svelte';
+
   export let src;
   export let title;
   export let composer;
@@ -11,9 +20,15 @@
   let audio;
   let paused = true;
 
+  onMount(() => {
+    elements.add(audio);
+    return () => elements.delete(audio);
+  });
+
   function stopOthers() {
-    if (current && current !== audio) current.pause();
-    current = audio;
+    elements.forEach(element => {
+      if (element !== audio) element.pause();
+    });
   }
 </script>
 

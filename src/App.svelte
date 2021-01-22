@@ -1,19 +1,8 @@
 <script>
-  import AudioPlayer from './AudioPlayer.svelte';
+  import AudioPlayer, { stopAll } from './AudioPlayer.svelte';
 </script>
 
-<p>
-  In all the examples we've seen so far, the &lt;script&gt; block contains code
-  that runs when each component instance is initialised. <br /> For the vast
-  majority of components, that's all you'll ever need. <br /> Very occasionally,
-  you'll need to run some code outside of an individual component instance.
-  <br />
-  For example, you can play all five of these audio players simultaneously; it
-  would be better if playing one stopped all the others. <br /> We can do that
-  by declaring a &lt;script context="module"&gt; block. <br /> Code contained
-  inside it will run once, when the module first evaluates, rather than when a
-  component is instantiated. <br />
-</p>
+<button on:click={stopAll}> stop all audio </button>
 
 <!-- https://musopen.org/music/9862-the-blue-danube-op-314/ -->
 <AudioPlayer
