@@ -1,29 +1,42 @@
 <script>
-  import RedThing from './RedThing.svelte';
-  import GreenThing from './GreenThing.svelte';
-  import BlueThing from './BlueThing.svelte';
+  let key;
+  let keyCode;
 
-  const options = [
-    { color: 'red', component: RedThing },
-    { color: 'green', component: GreenThing },
-    { color: 'blue', component: BlueThing },
-  ];
-
-  let selected = options[0];
+  function handleKeydown(event) {
+    key = event.key;
+    keyCode = event.keyCode;
+  }
 </script>
 
-<select bind:value={selected}>
-  {#each options as option}
-    <option value={option}>{option.color}</option>
-  {/each}
-</select>
+<svelte:window on:keydown={handleKeydown} />
 
-<!-- {#if selected.color === 'red'}
-  <RedThing />
-{:else if selected.color === 'green'}
-  <GreenThing />
-{:else if selected.color === 'blue'}
-  <BlueThing />
-{/if} -->
+<div style="text-align: center">
+  {#if key}
+    <kbd>{key === ' ' ? 'Space' : key}</kbd>
+    <p>ASCII: {keyCode}</p>
+  {:else}
+    <p>Focus this window and press any key</p>
+  {/if}
+</div>
 
-<svelte:component this={selected.component} />
+<style>
+  div {
+    display: flex;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  kbd {
+    background-color: #eee;
+    border-radius: 4px;
+    font-size: 6em;
+    padding: 0.2em 0.5em;
+    border-top: 5px solid rgba(255, 255, 255, 0.5);
+    border-left: 5px solid rgba(255, 255, 255, 0.5);
+    border-right: 5px solid rgba(0, 0, 0, 0.2);
+    border-bottom: 5px solid rgba(0, 0, 0, 0.2);
+    color: #555;
+  }
+</style>
